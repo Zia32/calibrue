@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-5">
+<meta name="calibrue-build" content="2026.11.02-6">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Laptop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -15,7 +15,7 @@
   --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
 }
 @media (prefers-color-scheme:dark){:root{--panel:#161a1d;--fg:#e6eaed;--muted:#97a2ab;--line:#2b3237;--accent:#6aa1f4;--on-accent:#0b1726;--warn:#f0875a;color-scheme:dark}}
-html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:var(--sans)}
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:var(--sans);touch-action:none;overscroll-behavior:none}
 #cv{position:fixed;inset:0;width:100vw;height:100vh;display:block;touch-action:none;-webkit-user-select:none;user-select:none}
 #zoomWarn{position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:8;background:#b4471b;color:#fff;font:600 15px/1.4 var(--sans);padding:10px 16px;border-radius:8px;max-width:calc(100vw - 32px)}
 #panel{position:fixed;left:16px;top:16px;width:300px;max-height:calc(100vh - 32px);overflow:auto;box-sizing:border-box;
@@ -62,7 +62,7 @@ button.dl{font-size:15px;padding:10px 14px}
 </head>
 <body>
 <canvas id="cv"></canvas>
-<div id="zoomWarn" hidden>The page is zoomed in, so the test patterns are scaled. Pinch out (or press Ctrl + 0) until this message disappears.</div>
+<div id="zoomWarn" hidden>The page is zoomed in, so the test patterns are scaled. Press Ctrl + 0 (or pinch out) until this message disappears.</div>
 
 <div id="panel">
   <div>
@@ -177,12 +177,12 @@ button.dl{font-size:15px;padding:10px 14px}
   </div>
 </div>
 
-<script src="calib.js?v=2026.11.02-5"></script>
-<script src="icc.js?v=2026.11.02-5"></script>
-<script src="install.js?v=2026.11.02-5"></script>
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-5"></script>
-<script src="lib/qrcode-1.0.0.min.js?v=2026.11.02-5"></script>
-<script src="link.js?v=2026.11.02-5"></script>
+<script src="calib.js?v=2026.11.02-6"></script>
+<script src="icc.js?v=2026.11.02-6"></script>
+<script src="install.js?v=2026.11.02-6"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-6"></script>
+<script src="lib/qrcode-1.0.0.min.js?v=2026.11.02-6"></script>
+<script src="link.js?v=2026.11.02-6"></script>
 <script>
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d', { alpha: false });
@@ -474,6 +474,13 @@ addEventListener('resize', resize);
 // patch (no scrolling, clicking or pinch-zoom), and warn if the page ends up zoomed anyway,
 // because a zoomed checkerboard no longer averages correctly.
 for (const ev of ['touchstart', 'touchmove', 'pointerdown', 'contextmenu', 'gesturestart', 'dblclick']) cv.addEventListener(ev, e => e.preventDefault(), { passive: false });
+// Block zooming anywhere on this page: two-finger touch (pinch), touchpad pinch and Ctrl + wheel
+// (both arrive as wheel events with ctrlKey), and Ctrl + plus/minus.
+document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+document.addEventListener('touchstart', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+document.addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
+addEventListener('keydown', e => { if (e.ctrlKey && ['+', '=', '-', '_'].includes(e.key)) e.preventDefault(); });
 function checkZoom() { const vv = window.visualViewport; $('zoomWarn').hidden = !(vv && Math.abs(vv.scale - 1) > 0.01); }
 window.visualViewport?.addEventListener('resize', checkZoom); setInterval(checkZoom, 1000);
 document.addEventListener('fullscreenchange', resize);
