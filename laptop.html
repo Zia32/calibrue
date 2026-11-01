@@ -15,7 +15,7 @@
 }
 @media (prefers-color-scheme:dark){:root{--panel:#161a1d;--fg:#e6eaed;--muted:#97a2ab;--line:#2b3237;--accent:#6aa1f4;--warn:#f0875a;color-scheme:dark}}
 html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:var(--sans)}
-canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block}
+#cv{position:fixed;inset:0;width:100vw;height:100vh;display:block}
 #panel{position:fixed;left:16px;top:16px;width:300px;max-height:calc(100vh - 32px);overflow:auto;box-sizing:border-box;
   background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.4;
   display:flex;flex-direction:column;gap:12px}
@@ -37,6 +37,12 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .note{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
 .warn{color:var(--warn)}
 kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.pair{display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:10px}
+#qr{background:#fff;padding:6px;border-radius:6px;line-height:0;flex:none}
+#qr img,#qr canvas{width:96px!important;height:96px!important;position:static}
+.code{font-family:var(--mono);font-size:20px;font-weight:600;letter-spacing:.12em}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px;vertical-align:1px}
+.dot.on{background:#2fa35f}
 </style>
 </head>
 <body>
@@ -44,8 +50,17 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
 
 <div id="panel">
   <div>
-    <h1>Calibrue · M1 signal test</h1>
-    <p class="sub">Laptop side. Press the iPhone's rear camera on the centre square.</p>
+    <h1>Calibrue · laptop</h1>
+    <p class="sub">Press the iPhone's rear camera on the centre square.</p>
+  </div>
+
+  <div class="pair">
+    <div id="qr"></div>
+    <div>
+      <div class="sub">Pair your iPhone: scan with the Camera app or type</div>
+      <div class="code" id="code">······</div>
+      <div class="sub"><span class="dot" id="dot"></span><span id="pairStatus">Connecting to pairing service…</span></div>
+    </div>
   </div>
 
   <div>
@@ -104,6 +119,8 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
   </div>
 </div>
 
+<script src="lib/peerjs-1.5.4.min.js"></script>
+<script src="lib/qrcode-1.0.0.min.js"></script>
 <script>
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d', { alpha: false });
@@ -168,6 +185,7 @@ function draw(st) { ctx.drawImage(st ? B : A, rect.x, rect.y); }
 function setHalf() {
   half = Math.max(1, Math.round(R / (2 * S.freq)));
   $('rF').textContent = (R / (2 * half)).toFixed(2) + ' Hz';
+  if (typeof send === 'function') send(stateMsg());
 }
 
 // Measure refresh rate from 90 frame intervals (median).
@@ -186,8 +204,53 @@ function tick(t) {
   lastT = t; frames++;
   const st = S.run ? Math.floor(frames / half) % 2 : 0;
   if (st !== phase) { draw(st); phase = st; }
+  if (pendingAck != null && phase !== -1) { send({ ...stateMsg(), type: 'ack', id: pendingAck }); pendingAck = null; }
 }
 requestAnimationFrame(tick);
+
+// ---- Pairing with the iPhone (PeerJS, direct WebRTC data channel) ----
+let conn = null, pendingAck = null, wake = null;
+const ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789';
+const code = Array.from(crypto.getRandomValues(new Uint8Array(6)), b => ALPHA[b % ALPHA.length]).join('');
+$('code').textContent = code.toUpperCase();
+function pairStatus(text, on) { $('pairStatus').textContent = text; $('dot').className = 'dot' + (on ? ' on' : ''); }
+function stateMsg() {
+  return { type: 'state', state: { mode: S.mode, ch: S.ch, v: S.v, d: S.d, lo: S.lo, hi: S.hi, run: S.run },
+           flicker: R / (2 * half), refresh: R, drops };
+}
+function send(m) { try { if (conn && conn.open) conn.send(m); } catch (e) {} }
+function onMsg(m) {
+  if (!m || m.type !== 'set') return;
+  const s = m.state || {};
+  if (['delta', 'checker', 'static'].includes(s.mode)) S.mode = s.mode;
+  if (['grey', 'red', 'green', 'blue'].includes(s.ch)) S.ch = s.ch;
+  if (Number.isFinite(s.v)) S.v = clamp(s.v);
+  if (Number.isFinite(s.d)) S.d = Math.max(1, Math.min(64, Math.round(s.d)));
+  if (Number.isFinite(s.lo)) S.lo = clamp(s.lo);
+  if (Number.isFinite(s.hi)) S.hi = clamp(s.hi);
+  if (typeof s.run === 'boolean' && s.run !== S.run) { S.run = s.run; drops = 0; $('rD').textContent = 0; if (S.run) keepAwake(); }
+  $('mode').value = S.mode; $('ch').value = S.ch; $('d').value = S.d; $('lo').value = S.lo; $('hi').value = S.hi;
+  build(); syncUI(true);
+  pendingAck = m.id; // answered after the new patch is on screen (next frame)
+}
+async function keepAwake() { try { wake = await navigator.wakeLock?.request('screen'); } catch (e) {} }
+const phoneUrl = new URL('phone.html?pair=' + code, location.href).href;
+if (window.QRCode) new QRCode($('qr'), { text: phoneUrl, width: 192, height: 192, correctLevel: QRCode.CorrectLevel.M });
+else $('qr').hidden = true;
+if (window.Peer) {
+  const peer = new Peer('calibrue-' + code);
+  peer.on('open', () => pairStatus('Waiting for iPhone'));
+  peer.on('connection', c => {
+    if (conn) conn.close();
+    conn = c;
+    c.on('open', () => { pairStatus('iPhone connected', true); send(stateMsg()); });
+    c.on('data', onMsg);
+    c.on('close', () => { if (conn === c) { conn = null; pairStatus('iPhone disconnected. Scan again to reconnect.'); } });
+  });
+  peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });
+  peer.on('error', e => pairStatus('Pairing problem: ' + (e.type || 'unknown') + '. Reload the page.'));
+} else pairStatus('Pairing library did not load. Check the internet connection and reload.');
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.run) keepAwake(); });
 
 function syncUI() {
   $('vRead').textContent = S.v + (S.mode === 'delta' ? ' / ' + clamp(S.v + S.d) : S.mode === 'checker' ? ' vs ' + S.lo + '|' + S.hi : '');
@@ -195,6 +258,7 @@ function syncUI() {
   $('dWrap').hidden = S.mode !== 'delta';
   document.querySelectorAll('.ck').forEach(e => e.hidden = S.mode !== 'checker');
   $('run').textContent = S.run ? 'Pause' : 'Start flicker';
+  if (typeof send === 'function' && !arguments[0]) send(stateMsg()); // tell the phone about local changes
 }
 function setV(x) { S.v = clamp(x); build(); syncUI(); }
 
@@ -206,7 +270,7 @@ $('d').onchange = e => { S.d = Math.max(1, Math.min(64, +e.target.value || 1)); 
 $('lo').onchange = e => { S.lo = clamp(+e.target.value); build(); syncUI(); };
 $('hi').onchange = e => { S.hi = clamp(+e.target.value); build(); syncUI(); };
 $('size').onchange = e => { S.size = e.target.value; layout(); };
-$('run').onclick = () => { S.run = !S.run; drops = 0; $('rD').textContent = 0; syncUI(); };
+$('run').onclick = () => { S.run = !S.run; drops = 0; $('rD').textContent = 0; if (S.run) keepAwake(); syncUI(); };
 $('fs').onclick = () => document.documentElement.requestFullscreen?.().catch(() => {});
 $('hide').onclick = () => { $('panel').hidden = true; };
 

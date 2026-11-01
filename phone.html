@@ -58,9 +58,18 @@ video{width:96px;height:72px;border-radius:6px;background:#000;object-fit:cover;
 <body>
 <main>
   <header>
-    <h1>Calibrue · M1 signal test</h1>
-    <p class="sub">Phone side. Rear camera pressed flat on the laptop's centre square, screen facing you.</p>
+    <h1>Calibrue · iPhone</h1>
+    <p class="sub">Rear camera pressed flat on the laptop's centre square, screen facing you.</p>
   </header>
+
+  <section>
+    <div class="verdict">
+      <h2>Laptop link</h2>
+      <span class="pill bad" id="linkPill">Not paired</span>
+    </div>
+    <span class="hz"><input id="code" placeholder="Code on laptop" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="6"><button id="pairBtn" type="button">Connect</button></span>
+    <dl class="kv"><dt>Laptop shows</dt><dd id="lapState">–</dd></dl>
+  </section>
 
   <section>
     <div class="controls">
@@ -76,6 +85,22 @@ video{width:96px;height:72px;border-radius:6px;background:#000;object-fit:cover;
       </label>
     </div>
     <div class="status" id="status">Camera off. Needs HTTPS and camera permission.</div>
+  </section>
+
+  <section>
+    <h2>Automatic tests</h2>
+    <div class="actions">
+      <button class="primary" id="autoNull" type="button" disabled>Find null point</button>
+      <button id="autoStep" type="button" disabled>Step test: dark, mid, light</button>
+      <button id="autoStop" type="button" hidden>Stop</button>
+    </div>
+    <div class="status" id="autoMsg">Pair with the laptop, start the camera, then press the phone flat on the square.</div>
+    <div class="figure" id="autoBig" hidden></div>
+    <canvas id="autoPlot" hidden aria-label="Step size by test value"></canvas>
+    <table id="autoTbl" hidden>
+      <thead><tr><th>Test value v</th><th>Step</th><th>SNR</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
   </section>
 
   <section>
@@ -130,13 +155,16 @@ video{width:96px;height:72px;border-radius:6px;background:#000;object-fit:cover;
   </section>
 </main>
 
+<script src="lib/peerjs-1.5.4.min.js"></script>
 <script src="analysis.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const video = $('vid');
 const grab = document.createElement('canvas'); grab.width = 64; grab.height = 48;
 const gctx = grab.getContext('2d', { willReadFrequently: true });
-let stream = null, track = null, wake = null, buf = [], hist = [], last = null, timer = null, lastMediaTime = -1, gen = 0;
+let stream = null, track = null, wake = null, buf = [], hist = [], last = null, timer = null, lastMediaTime = -1, gen = 0, seq = 0;
+let peer = null, link = null, lap = null, msgId = 0, auto = null, lastAuto = null;
+const waiters = new Map();
 
 function setStatus(t, err) { $('status').textContent = t; $('status').className = 'status' + (err ? ' err' : ''); }
 
@@ -156,6 +184,7 @@ async function start() {
   const g = ++gen; // one capture loop per camera start; older loops stop themselves
   if ('requestVideoFrameCallback' in video) video.requestVideoFrameCallback((n, m) => onFrame(n, m, g)); else requestAnimationFrame(n => onRaf(n, g));
   timer = setInterval(update, 250);
+  refreshAuto();
   try { wake = await navigator.wakeLock?.request('screen'); } catch (e) {}
 }
 function stop() {
@@ -170,7 +199,7 @@ function sample(ts) {
   const d = gctx.getImageData(13, 10, 38, 28).data; // centre 60% of the frame
   let r = 0, g = 0, b = 0; const n = d.length / 4;
   for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
-  buf.push({ t: ts, r: r / n, g: g / n, b: b / n });
+  buf.push({ seq: ++seq, t: ts, r: r / n, g: g / n, b: b / n });
   while (buf.length && buf[0].t < ts - 10) buf.shift();
 }
 function onFrame(now, meta, g) {
@@ -308,7 +337,9 @@ $('copy').onclick = async () => {
   const c = track ? readCaps() : {};
   const r = last ? Object.fromEntries(['r', 'g', 'b'].map(k => [k, { step: +last.res[k].step.toFixed(4), snr: +last.res[k].snr.toFixed(2), mean: +last.mean[k].toFixed(2) }])) : null;
   const text = JSON.stringify({ when: new Date().toISOString(), ua: navigator.userAgent, facing: $('facing').value,
-    f: last?.f, fps: last ? +last.fps.toFixed(1) : null, window_s: +$('win').value, readings: r, camera: c }, null, 1);
+    f: last?.f, fps: last ? +last.fps.toFixed(1) : null, window_s: +$('win').value, readings: r,
+    laptop: lap ? { ...lap.state, flicker: +(+lap.flicker).toFixed(2), refresh: +(+lap.refresh).toFixed(1), drops: lap.drops } : null,
+    auto: lastAuto, camera: c }, null, 1);
   const out = $('out'); out.value = text; out.hidden = false;
   try { await navigator.clipboard.writeText(text); $('copyMsg').textContent = 'Copied. Paste it into the chat with the laptop settings you used.'; }
   catch (e) { out.select(); $('copyMsg').textContent = 'Copy was blocked. The text is selected above; copy it by hand.'; }
@@ -316,6 +347,157 @@ $('copy').onclick = async () => {
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible' && stream) { try { wake = await navigator.wakeLock?.request('screen'); } catch (e) {} }
 });
+
+// ---- Laptop link (PeerJS) ----
+function setLink(text, cls) { $('linkPill').textContent = text; $('linkPill').className = 'pill ' + cls; }
+function connect(raw) {
+  const code = (raw || '').trim().toLowerCase();
+  if (!/^[a-z0-9]{6}$/.test(code)) { setLink('Code must be 6 characters', 'bad'); return; }
+  if (!window.Peer) { setLink('Pairing library did not load', 'bad'); return; }
+  if (peer) { try { peer.destroy(); } catch (e) {} }
+  link = null; refreshAuto(); setLink('Connecting…', 'mid');
+  peer = new Peer();
+  peer.on('open', () => {
+    const c = peer.connect('calibrue-' + code, { serialization: 'json', reliable: true });
+    c.on('open', () => { link = c; setLink('Paired', 'good'); refreshAuto(); });
+    c.on('data', onLapMsg);
+    c.on('close', () => { if (link === c) { link = null; setLink('Disconnected', 'bad'); refreshAuto(); } });
+  });
+  peer.on('error', e => {
+    setLink(e.type === 'peer-unavailable' ? 'Laptop not found. Check the code.' : 'Pairing problem: ' + (e.type || 'unknown'), 'bad');
+    refreshAuto();
+  });
+}
+function onLapMsg(m) {
+  if (!m || (m.type !== 'state' && m.type !== 'ack')) return;
+  lap = m;
+  const s = m.state, F = Number.isFinite(m.flicker) ? m.flicker.toFixed(2) + ' Hz' : '?';
+  const what = s.mode === 'delta' ? `step ${s.v} / ${Math.min(255, s.v + s.d)}` : s.mode === 'checker' ? `null ${s.v} vs ${s.lo}|${s.hi}` : `static ${s.v}`;
+  $('lapState').textContent = `${what} · ${F} · ${s.run ? 'flickering' : 'paused'}`;
+  if (Number.isFinite(m.flicker)) $('f').value = m.flicker.toFixed(2);
+  if (m.type === 'ack' && waiters.has(m.id)) { waiters.get(m.id)(m); waiters.delete(m.id); }
+}
+function command(state) {
+  return new Promise((res, rej) => {
+    if (!link) return rej(new Error('Not paired with the laptop.'));
+    const id = ++msgId;
+    const to = setTimeout(() => { waiters.delete(id); rej(new Error('The laptop did not answer. Is its page still open?')); }, 4000);
+    waiters.set(id, m => { clearTimeout(to); res(m); });
+    link.send({ type: 'set', id, state });
+  });
+}
+
+// ---- Automatic tests ----
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function refreshAuto(msg = true) {
+  const ready = !!link && !!stream && !auto;
+  $('autoNull').disabled = !ready; $('autoStep').disabled = !ready; $('autoStop').hidden = !auto;
+  if (!auto && msg) $('autoMsg').textContent = !link ? 'Pair with the laptop first.' : !stream ? 'Start the camera.' : 'Press the phone flat on the square, then pick a test.';
+}
+// Set the laptop, wait for the camera to settle, then measure the flicker in fresh frames only.
+async function measureAt(state, settle = 800, dur = 2600) {
+  const ack = await command(state);
+  await sleep(settle); if (auto.stop) throw new Error('Stopped.');
+  const s0 = seq;
+  await sleep(dur); if (auto.stop) throw new Error('Stopped.');
+  const s = buf.filter(p => p.seq > s0);
+  if (s.length < 30) throw new Error('Too few camera frames. Keep the camera running and the page open.');
+  const t0 = s[0].t, t = s.map(p => p.t - t0), fps = (s.length - 1) / (t[t.length - 1] || 1);
+  const x = s.map(p => (p.r + p.g + p.b) / 3);
+  const r = Flicker.analyze(t, x, ack.flicker, fps);
+  return { step: r.step, snr: r.snr, mean: avg(x) };
+}
+function showRows(rows, mark) {
+  $('autoTbl').hidden = false;
+  $('autoTbl').tBodies[0].innerHTML = rows.map(r =>
+    `<tr><td>${r.v}</td><td>${fmt(r.step, 3)}</td><td>${fmt(r.snr, 1)}</td><td>${mark ? mark(r) : ''}</td></tr>`).join('');
+}
+function plotRows(rows, best) {
+  const cv = $('autoPlot'); cv.hidden = false;
+  const { g, W, H } = prep(cv);
+  const pts = rows.slice().sort((a, b) => a.v - b.v);
+  if (pts.length < 2) return;
+  const lo = pts[0].v, hi = pts[pts.length - 1].v, max = Math.max(...pts.map(p => p.step), 0.1);
+  const X = v => 8 + (v - lo) / (hi - lo || 1) * (W - 16), Y = s => H - 20 - s / max * (H - 32);
+  g.strokeStyle = tok('--line'); g.lineWidth = 1.5; g.beginPath();
+  pts.forEach((p, i) => i ? g.lineTo(X(p.v), Y(p.step)) : g.moveTo(X(p.v), Y(p.step))); g.stroke();
+  g.fillStyle = tok('--muted'); pts.forEach(p => { g.beginPath(); g.arc(X(p.v), Y(p.step), 2.5, 0, 7); g.fill(); });
+  g.font = '11px ' + tok('--mono'); g.textAlign = 'center';
+  g.fillText(lo, Math.max(X(lo), 14), H - 4); g.fillText(hi, Math.min(X(hi), W - 14), H - 4);
+  if (best != null) {
+    g.strokeStyle = tok('--accent'); g.setLineDash([3, 3]); g.beginPath(); g.moveTo(X(best), 8); g.lineTo(X(best), H - 20); g.stroke(); g.setLineDash([]);
+    g.fillStyle = tok('--accent'); g.fillText('v ' + best.toFixed(1), Math.min(Math.max(X(best), 24), W - 24), 10);
+  }
+}
+// Null position from the V shape: fit a line to each flank (2–8 levels from the lowest point), take the crossing.
+function vFit(rows) {
+  const pts = rows.slice().sort((a, b) => a.v - b.v);
+  const m = pts.reduce((b, p) => p.step < b.step ? p : b, pts[0]);
+  const side = sgn => pts.filter(p => sgn * (p.v - m.v) >= 2 && sgn * (p.v - m.v) <= 8);
+  const line = ps => { const n = ps.length, mx = ps.reduce((s, p) => s + p.v, 0) / n, my = ps.reduce((s, p) => s + p.step, 0) / n;
+    let num = 0, den = 0; ps.forEach(p => { num += (p.v - mx) * (p.step - my); den += (p.v - mx) ** 2; });
+    const a = num / den; return { a, b: my - a * mx }; };
+  const L = side(-1), Rr = side(1);
+  if (L.length >= 2 && Rr.length >= 2) {
+    const l = line(L), r = line(Rr);
+    if (l.a < 0 && r.a > 0) { const x = (r.b - l.b) / (l.a - r.a); if (Math.abs(x - m.v) <= 2) return x; }
+  }
+  return m.v;
+}
+async function runAuto(kind) {
+  auto = { stop: false }; refreshAuto();
+  $('autoBig').hidden = true; $('autoPlot').hidden = true;
+  const rows = [];
+  try {
+    if (kind === 'null') {
+      const base = { mode: 'checker', ch: 'grey', lo: 0, hi: 255, run: true };
+      const coarse = []; for (let v = 120; v <= 240; v += 10) coarse.push(v);
+      for (const [i, v] of coarse.entries()) {
+        $('autoMsg').textContent = `Rough scan ${i + 1} of ${coarse.length}: v = ${v}. Keep the phone still.`;
+        rows.push({ v, ...(await measureAt({ ...base, v })) }); showRows(rows); plotRows(rows);
+      }
+      const c = rows.reduce((b, r) => r.step < b.step ? r : b).v;
+      const fine = []; for (let v = Math.max(0, c - 8); v <= Math.min(255, c + 8); v++) if (!rows.some(r => r.v === v)) fine.push(v);
+      for (const [i, v] of fine.entries()) {
+        $('autoMsg').textContent = `Fine scan ${i + 1} of ${fine.length}: v = ${v}.`;
+        rows.push({ v, ...(await measureAt({ ...base, v })) }); showRows(rows.slice().sort((a, b) => a.v - b.v)); plotRows(rows);
+      }
+      const best = vFit(rows.filter(r => Math.abs(r.v - c) <= 9));
+      const gamma = Math.log(0.5) / Math.log(best / 255);
+      $('autoBig').hidden = false;
+      $('autoBig').innerHTML = `v ${best.toFixed(1)}<small> null point · gamma ≈ ${gamma.toFixed(2)}</small>`;
+      $('autoMsg').textContent = 'Done. Gamma 2.2 would null near v 186. Tap Copy results and send them.';
+      showRows(rows.slice().sort((a, b) => a.v - b.v), r => Math.abs(r.v - best) < 0.5 ? '← lowest' : '');
+      plotRows(rows, best);
+      lastAuto = { test: 'null', best_v: +best.toFixed(2), gamma: +gamma.toFixed(3), rows: rows.map(r => ({ v: r.v, step: +r.step.toFixed(4), snr: +r.snr.toFixed(2) })) };
+    } else {
+      for (const v of [32, 128, 224]) {
+        $('autoMsg').textContent = `Step test at v = ${v} (Δ = 1). Keep the phone still.`;
+        rows.push({ v, ...(await measureAt({ mode: 'delta', ch: 'grey', v, d: 1, run: true }, 800, 4000)) });
+        showRows(rows, r => r.snr >= 4 ? 'pass' : r.snr >= 2 ? 'weak' : 'fail');
+      }
+      const pass = rows.every(r => r.snr >= 4);
+      $('autoBig').hidden = false;
+      $('autoBig').innerHTML = `${pass ? 'Pass' : 'Not all pass'}<small> 1-level step at dark, mid, light</small>`;
+      $('autoMsg').textContent = 'Done. Tap Copy results and send them.';
+      lastAuto = { test: 'step', rows: rows.map(r => ({ v: r.v, step: +r.step.toFixed(4), snr: +r.snr.toFixed(2) })) };
+    }
+  } catch (e) {
+    $('autoMsg').textContent = e.message;
+  }
+  try { await command({ run: false }); } catch (e) {}
+  auto = null; refreshAuto(false); // keep the result or error message visible
+}
+$('autoNull').onclick = () => runAuto('null');
+$('autoStep').onclick = () => runAuto('step');
+$('autoStop').onclick = () => { if (auto) auto.stop = true; };
+$('pairBtn').onclick = () => connect($('code').value);
+$('code').addEventListener('keydown', e => { if (e.key === 'Enter') connect($('code').value); });
+{
+  const pc = new URLSearchParams(location.search).get('pair');
+  if (pc) { $('code').value = pc.toUpperCase(); connect(pc); }
+}
+refreshAuto();
 </script>
 </body>
 </html>
