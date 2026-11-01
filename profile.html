@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.01-7">
+<meta name="calibrue-build" content="2026.11.01-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Profile</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -83,8 +83,8 @@ th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:righ
     <p>Colour-managed apps (Photoshop, Lightroom, Chrome, Edge) need to know your screen's red, green, blue and white. Without this step the profile assumes standard sRGB. To read your screen's factory values, open <b>PowerShell</b> (Start → type PowerShell), paste this command and press Enter:</p>
     <pre id="psCmd">Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorColorCharacteristics | ForEach-Object { foreach ($c in 'Red','Green','Blue','DefaultWhite') { "$c $($_.$c.X) $($_.$c.Y)" } }</pre>
     <div class="row"><button id="copyCmd" type="button">Copy command</button><span class="note" id="copyMsg"></span></div>
-    <label class="note" for="edidIn">Paste the four lines it prints here:</label>
-    <textarea id="edidIn" spellcheck="false" placeholder="Red 656 338&#10;Green 307 614&#10;Blue 154 61&#10;DefaultWhite 320 337"></textarea>
+    <label class="note" for="edidIn">Paste the four lines it prints here. If you have <b>HWiNFO</b>, its four <b>Chromaticity Coordinates</b> lines (Monitor → your laptop screen) are more precise; paste those instead.</label>
+    <textarea id="edidIn" spellcheck="false" placeholder="Red 169 84&#10;Green 73 159&#10;Blue 37 14&#10;DefaultWhite 80 84&#10;&#10;or from HWiNFO:&#10;Red [x,y]: 0.6602, 0.3291 …"></textarea>
     <div id="edidOut" class="note">Using standard sRGB until you paste values.</div>
   </section>
 
@@ -126,8 +126,8 @@ th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:righ
   </section>
 </main>
 
-<script src="calib.js?v=2026.11.01-7"></script>
-<script src="icc.js?v=2026.11.01-7"></script>
+<script src="calib.js?v=2026.11.01-8"></script>
+<script src="icc.js?v=2026.11.01-8"></script>
 <script>
 const $ = id => document.getElementById(id);
 $('build').textContent = 'Version ' + document.querySelector('meta[name=calibrue-build]').content + '.';

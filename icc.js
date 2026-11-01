@@ -87,7 +87,7 @@
     return new Uint8Array(w.bytes);
   }
 
-  // EDID colour data as printed by the PowerShell command on the profile page: lines like
+  // EDID colour data: HWiNFO's "Red [x,y]: 0.6602, 0.3291" lines, or the PowerShell command's lines like
   // "Red 169 84". Windows reports these as integers whose scale varies (seen: /256; EDID itself
   // stores /1024), so pick the scale that puts the white point near daylight. Decimal input
   // ("x=0.6406 y=0.3301", comma or point) is used as is. Returns null unless the result is a
@@ -95,7 +95,7 @@
   function parseEdid(textIn) {
     const raw = {};
     for (const line of String(textIn).split(/\r?\n/)) {
-      const m = line.match(/\b(Red|Green|Blue|DefaultWhite|White)\b\D*?([\d.,]+)\D+?([\d.,]+)/i);
+      const m = line.match(/\b(Red|Green|Blue|DefaultWhite|White)\b\D*?(\d+(?:[.,]\d+)?)\D+?(\d+(?:[.,]\d+)?)/i); // labels like "[x,y]" hold no digits
       if (!m) continue;
       const k = m[1].toLowerCase().replace('defaultwhite', 'white');
       raw[k] = [parseFloat(m[2].replace(',', '.')), parseFloat(m[3].replace(',', '.'))];
