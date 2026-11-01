@@ -12,6 +12,8 @@ Two static web pages. No build step, no server code of our own. The phone and la
 | `profile.html` | laptop | Builds the Windows .icc profile, EDID import, preview, install steps |
 | `icc.js` | laptop | ICC v2.4 writer with a `vcgt` calibration table |
 | `link.js` | both | Phone ↔ laptop messages over the relays |
+| `report.html` | laptop | Calibration report |
+| `install.js` | laptop | Builds the one-click installer (.cmd + PowerShell) |
 | `lib/` | both | MQTT.js 5.10.1 (relay client) and qrcodejs 1.0.0 (QR code), MIT licensed |
 
 ## 1. Host it (GitHub Pages, free, HTTPS)
@@ -31,9 +33,12 @@ The iPhone camera only works on HTTPS pages, so the files must be hosted.
    - **Signal check:** a 1-level step must reach SNR 4, or it stops and says what to fix.
    - **Pattern check:** grey null with 1×1 and 2×2 checkers and horizontal and vertical lines. The patterns that agree give the grey gamma; one of them is used from here on.
    - **Colour curves:** red, green and blue are measured together, each flickering at its own frequency (about 7.5, 6 and 5 Hz at 60 Hz refresh), separated on the phone with a Hann-windowed analysis. 9 points per colour; each null gets 7 measurements (3 around the prediction, 2 to confirm, 2 close to the null). Steps are read relative to the camera's average level so exposure changes cancel; a measurement stops after 1.3 s when the signal is already clear.
+   - **Stability check:** the grey reference again; drift over 1 level is flagged and the anchor uses the average.
    - **Build profile:** the curves are shifted so their mean matches the grey gamma (single-channel patches read about 0.08 higher on Zia's panel), then turned into ramps. In a physical simulation (display frames, camera exposure, sensor crosstalk, tone curve, noise) this matches the one-colour-at-a-time method's accuracy (corrected-screen error typically ΔL* ≈ 0.4) in a bit over half the time.
 4. The laptop shows **Profile ready**: download, optional EDID colours, install steps.
-5. After installing, pair again and tap **Verify** on the phone. Within ±0.03 of 2.2 it says on target. Otherwise the laptop builds a refined profile (`-r1`) to install instead.
+5. Install with **Download one-click installer** (`Install Calibrue profile.cmd`: double-click, allow; it installs the profile, sets it as the built-in screen's default, checks that Windows confirmed it, and switches on Windows display calibration), or by hand with colorcpl.
+6. Pair again and tap **Verify**: grey at 25/50/75% light. Largest error ΔL* ≤ 0.5 is on target; otherwise the laptop builds a refined profile (`-r1`) that corrects the whole curve.
+7. `report.html`: before/after, tone-response chart, every check (signal, pattern agreement, stability drift, grey balance) and the verification history; prints to PDF.
 
 `profile.html` has the details view, EDID tools and **Match the white**: two sliders (warmer/cooler, greener/magenta) to match the laptop's white to another screen by eye. The result scales the three ramps (largest gain stays 1), so greys carry the same tint and peak brightness drops only a few percent. The camera is not used for this because its colour response differs from the eye's between different panel types. The single tests are under **Advanced tools** on the phone.
 

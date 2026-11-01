@@ -11,12 +11,12 @@
 /* Layout: a one-column measurement certificate: verdict, curve chart, checks, history. */
 :root{
   --bg:#f3f5f6; --card:#ffffff; --fg:#121619; --muted:#56616a; --line:#d3d9dd; --accent:#1f6bd6; --on-accent:#ffffff;
-  --good:#1c7c46; --warn:#a2541c; --r:#c8382f; --g:#2a8a3e; --b:#2d62c9; --target:#121619;
+  --good:#1c7c46; --warn:#a2541c; --r:#c8382f; --g:#2a8a3e; --b:#2d62c9; --target:#7b858d; --after:#121619;
   --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
   color-scheme:light;
 }
-@media (prefers-color-scheme:dark){:root{--bg:#0f1214;--card:#171b1e;--fg:#e7ebee;--muted:#97a2aa;--line:#2a3135;--accent:#6aa1f4;--on-accent:#0b1726;--good:#4cc283;--warn:#f0a26a;--r:#f07068;--g:#5fcf77;--b:#79a3f5;--target:#e7ebee;color-scheme:dark}}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1214;--card:#171b1e;--fg:#e7ebee;--muted:#97a2aa;--line:#2a3135;--accent:#6aa1f4;--on-accent:#0b1726;--good:#4cc283;--warn:#f0a26a;--r:#f07068;--g:#5fcf77;--b:#79a3f5;--target:#7f8a92;--after:#f2f4f6;color-scheme:dark}}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--sans);padding:32px max(16px,env(safe-area-inset-right)) 48px max(16px,env(safe-area-inset-left))}
@@ -32,6 +32,7 @@ section{background:var(--card);border:1px solid var(--line);border-radius:12px;p
 .cell{display:flex;flex-direction:column;gap:2px}
 .cell b{font-family:var(--mono);font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
 .cell span{font-size:12px;color:var(--muted)}
+.cell b.multi{font-size:20px;line-height:1.5}
 .pill{display:inline-block;font-size:13px;font-weight:600;padding:3px 10px;border-radius:999px;border:1.5px solid currentColor}
 .pill.good{color:var(--good)} .pill.warn{color:var(--warn)} .pill.none{color:var(--muted)}
 .chart{overflow-x:auto}
@@ -70,7 +71,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       <div class="verdict">
         <div class="cell"><b id="vBefore">–</b><span>gamma before (grey)</span></div>
         <div class="cell"><b>2.20</b><span>target</span></div>
-        <div class="cell"><b id="vAfter">–</b><span>gamma after, dark · mid · light</span></div>
+        <div class="cell"><b id="vAfter" class="multi">–</b><span>gamma after, dark · mid · light</span></div>
         <div class="cell"><b id="vDL">–</b><span>largest remaining error, ΔL*</span></div>
       </div>
       <p><span class="pill none" id="vPill">Not verified yet</span> <span class="sub" id="vNote"></span></p>
@@ -80,7 +81,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       <h2>Tone response</h2>
       <p class="sub">Effective gamma across the brightness range. A flat line at 2.20 is a perfectly calibrated screen. Points below the line are too bright there, above it too dark.</p>
       <div class="chart"><svg id="chart" viewBox="0 0 760 320" role="img" aria-label="Gamma before and after calibration across the brightness range"></svg></div>
-      <div class="legend"><span><i style="border-color:var(--r)"></i>Red before</span><span><i style="border-color:var(--g)"></i>Green before</span><span><i style="border-color:var(--b)"></i>Blue before</span><span><i style="border-color:var(--target);border-top-style:dashed"></i>Target 2.20</span><span><i style="border-color:var(--accent);border-top-width:3px"></i>After (latest verification)</span></div>
+      <div class="legend"><span><i style="border-color:var(--r)"></i>Red before</span><span><i style="border-color:var(--g)"></i>Green before</span><span><i style="border-color:var(--b)"></i>Blue before</span><span><i style="border-color:var(--target);border-top-style:dashed"></i>Target 2.20</span><span><i style="border-color:var(--after);border-top-width:3.5px"></i>After (latest verification)</span></div>
     </section>
 
     <section>
@@ -138,7 +139,7 @@ else {
       .map(p => ({ x: p.v / 255, y: Math.log(p.F) / Math.log(p.v / 255) }));
     if (pts.length) series.push({ col, pts, dash: false, w: 2 });
   }
-  if (last) series.push({ col: '--accent', pts: last.levels.map(l => ({ x: l.v / 255, y: l.gamma })), w: 3, dots: true });
+  if (last) series.push({ col: '--after', pts: last.levels.map(l => ({ x: l.v / 255, y: l.gamma })), w: 3.5, dots: true });
   const ys = series.flatMap(s => s.pts.map(p => p.y)).concat([2.2]);
   let lo = Math.min(...ys), hi = Math.max(...ys); const span = Math.max(0.3, hi - lo);
   lo = Math.floor((lo - span * 0.15) * 20) / 20; hi = Math.ceil((hi + span * 0.15) * 20) / 20;
