@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.01-5">
+<meta name="calibrue-build" content="2026.11.01-6">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Laptop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -10,11 +10,11 @@
 <style>
 /* Layout: black stage with the measured patch centred; a floating instrument panel top-left. */
 :root{
-  --panel:#eef1f3; --fg:#121619; --muted:#56616a; --line:#cfd6db; --accent:#1f6bd6; --warn:#b4471b;
+  --panel:#eef1f3; --fg:#121619; --muted:#56616a; --line:#cfd6db; --accent:#1f6bd6; --on-accent:#ffffff; --warn:#b4471b;
   --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
 }
-@media (prefers-color-scheme:dark){:root{--panel:#161a1d;--fg:#e6eaed;--muted:#97a2ab;--line:#2b3237;--accent:#6aa1f4;--warn:#f0875a;color-scheme:dark}}
+@media (prefers-color-scheme:dark){:root{--panel:#161a1d;--fg:#e6eaed;--muted:#97a2ab;--line:#2b3237;--accent:#6aa1f4;--on-accent:#0b1726;--warn:#f0875a;color-scheme:dark}}
 html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:var(--sans)}
 #cv{position:fixed;inset:0;width:100vw;height:100vh;display:block}
 #panel{position:fixed;left:16px;top:16px;width:300px;max-height:calc(100vh - 32px);overflow:auto;box-sizing:border-box;
@@ -30,7 +30,7 @@ input[type=range]{padding:0;border:0}
 .wide{grid-column:1/-1}
 .row{display:flex;gap:8px;flex-wrap:wrap}
 button{cursor:pointer}
-button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .read{font-family:var(--mono);font-variant-numeric:tabular-nums;display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:12px}
 .read dt{color:var(--muted)} .read dd{margin:0;text-align:right}
@@ -125,9 +125,9 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
   </div>
 </div>
 
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.01-5"></script>
-<script src="lib/qrcode-1.0.0.min.js?v=2026.11.01-5"></script>
-<script src="link.js?v=2026.11.01-5"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.01-6"></script>
+<script src="lib/qrcode-1.0.0.min.js?v=2026.11.01-6"></script>
+<script src="link.js?v=2026.11.01-6"></script>
 <script>
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d', { alpha: false });
