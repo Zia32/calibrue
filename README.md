@@ -1,4 +1,4 @@
-# Calibrue — signal test + pairing
+# Calibrue — signal test, pairing, tone curves
 
 Two static web pages. No build step, no server code of our own. The phone and laptop talk directly over WebRTC (PeerJS); the public PeerJS server only introduces them.
 
@@ -8,6 +8,7 @@ Two static web pages. No build step, no server code of our own. The phone and la
 | `laptop.html` | Windows laptop (Edge or Chrome) | Flickers a test patch at a fixed frequency |
 | `phone.html` | iPhone (Safari) | Measures the flicker with the camera |
 | `analysis.js` | phone | Lock-in amplitude, noise floor, SNR |
+| `calib.js` | phone | Null search, per-channel tone curves, correction ramps |
 | `lib/` | both | PeerJS 1.5.4 (pairing) and qrcodejs 1.0.0 (QR code), MIT licensed |
 
 ## 1. Host it (GitHub Pages, free, HTTPS)
@@ -26,12 +27,21 @@ The iPhone camera only works on HTTPS pages, so the files must be hosted.
 3. Both show "connected" / "Paired". The phone's "Laptop shows" line mirrors the laptop's patch.
 4. Phone: Start camera, press it flat on the square, then use **Automatic tests**.
 
-## 3. Prepare
+## 3. Measure tone curves (M3)
+
+1. Pair, start the camera, press the phone flat on the square.
+2. Tap **Measure tone curves**. It measures red, green and blue (9 points each) in about 10 minutes.
+3. Keep the phone still the whole time. The laptop shows the result under **Calibration**.
+4. Tap **Copy results** and send them.
+
+While one channel is measured, the other two sit at a constant 96. Without that, the camera exposes for a mostly dark patch and the measured channel clips.
+
+## 4. Prepare
 
 - Laptop: dim room, brightness at your normal level, Night light off, adaptive brightness off, no custom colour profile loaded.
 - iPhone: clean the rear camera lens. A microfibre cloth over the camera bump protects the laptop screen.
 
-## 4. Manual go/no-go test
+## 5. Manual go/no-go test
 
 1. Laptop: open `laptop.html`, press **F** for fullscreen. Mode **Step test**, v = 128, Δ = 1, 6 Hz. Press **Start flicker**.
 2. iPhone: open `phone.html`, tap **Start camera** (Rear), allow camera access.
@@ -43,13 +53,13 @@ The iPhone camera only works on HTTPS pages, so the files must be hosted.
 **Marginal:** passes only at Δ = 2. The design still works, with 2-level precision.
 **Fail:** needs Δ ≥ 4. The contact method needs rethinking before M2.
 
-## 5. Manual null test (the automatic one is easier)
+## 6. Manual null test (the automatic one is easier)
 
 1. Laptop mode **Null test** (v vs checkerboard 0|255).
 2. Step v with the arrow keys and watch the phone's "Step size" line.
 3. The v with the lowest step is where your panel's v matches 50% light.
 4. A panel at gamma 2.2 nulls near **v ≈ 186**. Much lower means a brighter-than-standard curve; much higher, darker.
 
-## 6. Send back
+## 7. Send back
 
 Tap **Copy results** on the phone after each test and paste it into the chat, with the laptop settings you used (mode, v, Δ, Actual flicker, Dropped frames).

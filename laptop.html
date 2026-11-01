@@ -110,6 +110,7 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
     <dt>Actual flicker</dt><dd id="rF">–</dd>
     <dt>Dropped frames</dt><dd id="rD">0</dd>
     <dt>Pixel ratio</dt><dd id="rP">–</dd>
+    <dt>Calibration</dt><dd id="rC">none yet</dd>
   </dl>
 
   <div class="note">
@@ -125,7 +126,7 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d', { alpha: false });
 const $ = id => document.getElementById(id);
-const S = { mode: 'delta', ch: 'grey', v: 128, d: 1, lo: 0, hi: 255, freq: 6, size: 'square', run: false };
+const S = { mode: 'delta', ch: 'grey', v: 128, d: 1, lo: 0, hi: 255, ped: 0, freq: 6, size: 'square', run: false };
 
 let R = 60, half = 5, drops = 0, frames = 0, lastT = 0, phase = -1;
 let rect = null, A = null, B = null, chk = null, chkKey = '';
@@ -133,7 +134,8 @@ let rect = null, A = null, B = null, chk = null, chkKey = '';
 const clamp = x => Math.max(0, Math.min(255, Math.round(x)));
 function rgb(x) {
   x = clamp(x);
-  return S.ch === 'grey' ? [x, x, x] : S.ch === 'red' ? [x, 0, 0] : S.ch === 'green' ? [0, x, 0] : [0, 0, x];
+  const q = S.ped; // constant level in the other two channels, so the camera exposes for a normal grey
+  return S.ch === 'grey' ? [x, x, x] : S.ch === 'red' ? [x, q, q] : S.ch === 'green' ? [q, x, q] : [q, q, x];
 }
 function makeCanvas() { const c = document.createElement('canvas'); c.width = rect.w; c.height = rect.h; return c; }
 function uniform(x) {
@@ -166,7 +168,7 @@ function build() {
   A = uniform(S.v);
   if (S.mode === 'delta') B = uniform(S.v + S.d);
   else if (S.mode === 'checker') {
-    const key = [S.lo, S.hi, S.ch, rect.w, rect.h, rect.x, rect.y].join();
+    const key = [S.lo, S.hi, S.ch, S.ped, rect.w, rect.h, rect.x, rect.y].join();
     if (key !== chkKey) { chk = checker(S.lo, S.hi); chkKey = key; }
     B = chk;
   } else B = A;
@@ -215,11 +217,26 @@ const code = Array.from(crypto.getRandomValues(new Uint8Array(6)), b => ALPHA[b 
 $('code').textContent = code.toUpperCase();
 function pairStatus(text, on) { $('pairStatus').textContent = text; $('dot').className = 'dot' + (on ? ' on' : ''); }
 function stateMsg() {
-  return { type: 'state', state: { mode: S.mode, ch: S.ch, v: S.v, d: S.d, lo: S.lo, hi: S.hi, run: S.run },
+  return { type: 'state', state: { mode: S.mode, ch: S.ch, v: S.v, d: S.d, lo: S.lo, hi: S.hi, ped: S.ped, run: S.run },
            flicker: R / (2 * half), refresh: R, drops };
 }
 function send(m) { try { if (conn && conn.open) conn.send(m); } catch (e) {} }
+function showCal(c) {
+  if (!c || !c.gamma) { $('rC').textContent = 'none yet'; return; }
+  const t = new Date(c.when);
+  $('rC').textContent = `${c.gamma.red.toFixed(2)} · ${c.gamma.green.toFixed(2)} · ${c.gamma.blue.toFixed(2)}`;
+  $('rC').title = 'Gamma R · G · B, measured ' + t.toLocaleString();
+}
+let calibration = null;
+try { calibration = JSON.parse(localStorage.getItem('calibrue.calibration') || 'null'); } catch (e) {}
+showCal(calibration);
 function onMsg(m) {
+  if (m && m.type === 'calibration') { // tone curves + correction ramps from the phone; M4 turns these into a profile
+    calibration = m; showCal(m);
+    try { localStorage.setItem('calibrue.calibration', JSON.stringify(m)); } catch (e) {}
+    send({ type: 'calibration-saved' });
+    return;
+  }
   if (!m || m.type !== 'set') return;
   const s = m.state || {};
   if (['delta', 'checker', 'static'].includes(s.mode)) S.mode = s.mode;
@@ -228,6 +245,7 @@ function onMsg(m) {
   if (Number.isFinite(s.d)) S.d = Math.max(1, Math.min(64, Math.round(s.d)));
   if (Number.isFinite(s.lo)) S.lo = clamp(s.lo);
   if (Number.isFinite(s.hi)) S.hi = clamp(s.hi);
+  if (Number.isFinite(s.ped)) S.ped = clamp(s.ped);
   if (typeof s.run === 'boolean' && s.run !== S.run) { S.run = s.run; drops = 0; $('rD').textContent = 0; if (S.run) keepAwake(); }
   $('mode').value = S.mode; $('ch').value = S.ch; $('d').value = S.d; $('lo').value = S.lo; $('hi').value = S.hi;
   build(); syncUI(true);
