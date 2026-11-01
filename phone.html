@@ -481,7 +481,7 @@ async function runAuto(kind) {
     } else {
       for (const v of [32, 128, 224]) {
         $('autoMsg').textContent = `Step test at v = ${v} (Δ = 1). Keep the phone still.`;
-        rows.push({ v, ...(await measureAt({ mode: 'delta', ch: 'grey', v, d: 1, run: true }, 800, 4000)) });
+        rows.push({ v, ...(await measureAt({ mode: 'delta', ch: 'grey', v, d: 1, run: true }, 2500, 4000)) });
         showRows(rows, r => r.snr >= 4 ? 'pass' : r.snr >= 2 ? 'weak' : 'fail');
       }
       const pass = rows.every(r => r.snr >= 4);
