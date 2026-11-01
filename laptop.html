@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.01-8">
+<meta name="calibrue-build" content="2026.11.01-9">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Laptop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -125,14 +125,14 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
   </div>
 </div>
 
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.01-8"></script>
-<script src="lib/qrcode-1.0.0.min.js?v=2026.11.01-8"></script>
-<script src="link.js?v=2026.11.01-8"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.01-9"></script>
+<script src="lib/qrcode-1.0.0.min.js?v=2026.11.01-9"></script>
+<script src="link.js?v=2026.11.01-9"></script>
 <script>
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d', { alpha: false });
 const $ = id => document.getElementById(id);
-const S = { mode: 'delta', ch: 'grey', v: 128, d: 1, lo: 0, hi: 255, ped: 0, freq: 6, size: 'square', run: false };
+const S = { mode: 'delta', ch: 'grey', v: 128, d: 1, lo: 0, hi: 255, ped: 0, pat: 'c1', freq: 6, size: 'square', run: false };
 
 let R = 60, half = 5, drops = 0, frames = 0, lastT = 0, phase = -1;
 let rect = null, A = null, B = null, chk = null, chkKey = '';
@@ -152,7 +152,9 @@ function checker(a, b) {
   const c = makeCanvas(), g = c.getContext('2d'), img = g.createImageData(rect.w, rect.h), d = img.data;
   const ca = rgb(a), cb = rgb(b); let i = 0;
   for (let y = 0; y < rect.h; y++) for (let x = 0; x < rect.w; x++) {
-    const k = ((x + y + rect.x + rect.y) & 1) ? cb : ca;
+    const X = x + rect.x, Y = y + rect.y; // pattern in screen pixels
+    const on = S.pat === 'c2' ? ((X >> 1) + (Y >> 1)) & 1 : S.pat === 'h' ? Y & 1 : S.pat === 'v' ? X & 1 : (X + Y) & 1;
+    const k = on ? cb : ca;
     d[i] = k[0]; d[i + 1] = k[1]; d[i + 2] = k[2]; d[i + 3] = 255; i += 4;
   }
   g.putImageData(img, 0, 0); return c;
@@ -174,7 +176,7 @@ function build() {
   A = uniform(S.v);
   if (S.mode === 'delta') B = uniform(S.v + S.d);
   else if (S.mode === 'checker') {
-    const key = [S.lo, S.hi, S.ch, S.ped, rect.w, rect.h, rect.x, rect.y].join();
+    const key = [S.lo, S.hi, S.ch, S.ped, S.pat, rect.w, rect.h, rect.x, rect.y].join();
     if (key !== chkKey) { chk = checker(S.lo, S.hi); chkKey = key; }
     B = chk;
   } else B = A;
@@ -223,7 +225,7 @@ const code = Array.from(crypto.getRandomValues(new Uint8Array(6)), b => ALPHA[b 
 $('code').textContent = code.toUpperCase();
 function pairStatus(text, on) { $('pairStatus').textContent = text; $('dot').className = 'dot' + (on ? ' on' : ''); }
 function stateMsg() {
-  return { type: 'state', state: { mode: S.mode, ch: S.ch, v: S.v, d: S.d, lo: S.lo, hi: S.hi, ped: S.ped, run: S.run },
+  return { type: 'state', state: { mode: S.mode, ch: S.ch, v: S.v, d: S.d, lo: S.lo, hi: S.hi, ped: S.ped, pat: S.pat, run: S.run },
            flicker: R / (2 * half), refresh: R, drops };
 }
 function send(m) { try { if (link) link.send(m); } catch (e) {} }
@@ -254,6 +256,7 @@ function onMsg(m) {
   if (Number.isFinite(s.lo)) S.lo = clamp(s.lo);
   if (Number.isFinite(s.hi)) S.hi = clamp(s.hi);
   if (Number.isFinite(s.ped)) S.ped = clamp(s.ped);
+  if (['c1', 'c2', 'h', 'v'].includes(s.pat)) S.pat = s.pat; // c1 1×1 checker, c2 2×2 checker, h/v alternate lines
   if (typeof s.run === 'boolean' && s.run !== S.run) { S.run = s.run; drops = 0; $('rD').textContent = 0; if (S.run) keepAwake(); }
   $('mode').value = S.mode; $('ch').value = S.ch; $('d').value = S.d; $('lo').value = S.lo; $('hi').value = S.hi;
   build(); syncUI(true);

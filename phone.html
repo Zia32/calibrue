@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.01-8">
+<meta name="calibrue-build" content="2026.11.01-9">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Calibrue · iPhone</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -94,6 +94,7 @@ video{width:96px;height:72px;border-radius:6px;background:#000;object-fit:cover;
     <div class="actions">
       <button class="primary" id="autoNull" type="button" disabled>Find null point</button>
       <button id="autoStep" type="button" disabled>Step test: dark, mid, light</button>
+      <button id="autoPat" type="button" disabled>Pattern check</button>
       <button id="autoStop" type="button" hidden>Stop</button>
     </div>
     <div class="status" id="autoMsg">Pair with the laptop, start the camera, then press the phone flat on the square.</div>
@@ -174,10 +175,10 @@ video{width:96px;height:72px;border-radius:6px;background:#000;object-fit:cover;
   </section>
 </main>
 
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.01-8"></script>
-<script src="link.js?v=2026.11.01-8"></script>
-<script src="analysis.js?v=2026.11.01-8"></script>
-<script src="calib.js?v=2026.11.01-8"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.01-9"></script>
+<script src="link.js?v=2026.11.01-9"></script>
+<script src="analysis.js?v=2026.11.01-9"></script>
+<script src="calib.js?v=2026.11.01-9"></script>
 <script>
 const $ = id => document.getElementById(id);
 const video = $('vid');
@@ -422,7 +423,7 @@ function command(state) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function refreshAuto(msg = true) {
   const ready = !!link && !!stream && !auto;
-  $('autoNull').disabled = !ready; $('autoStep').disabled = !ready; $('autoStop').hidden = !auto || auto.kind === 'cal';
+  $('autoNull').disabled = !ready; $('autoStep').disabled = !ready; $('autoPat').disabled = !ready; $('autoStop').hidden = !auto || auto.kind === 'cal';
   $('calRun').disabled = !ready; $('calStop').hidden = !auto || auto.kind !== 'cal';
   if (!auto && msg) $('autoMsg').textContent = !link ? 'Pair with the laptop first.' : !stream ? 'Start the camera.' : 'Press the phone flat on the square, then pick a test.';
 }
@@ -486,11 +487,12 @@ function vFit(rows) {
 }
 async function runAuto(kind) {
   auto = { stop: false }; refreshAuto();
+  $('autoTbl').tHead.rows[0].innerHTML = '<th>Test value v</th><th>Step</th><th>SNR</th><th></th>';
   $('autoBig').hidden = true; $('autoPlot').hidden = true;
   const rows = [];
   try {
     if (kind === 'null') {
-      const base = { mode: 'checker', ch: 'grey', lo: 0, hi: 255, run: true };
+      const base = { mode: 'checker', ch: 'grey', lo: 0, hi: 255, ped: 0, pat: 'c1', run: true };
       const coarse = []; for (let v = 120; v <= 240; v += 10) coarse.push(v);
       for (const [i, v] of coarse.entries()) {
         $('autoMsg').textContent = `Rough scan ${i + 1} of ${coarse.length}: v = ${v}. Keep the phone still.`;
@@ -574,7 +576,7 @@ async function runCal() {
         (a, b, p, g) => {
           let first = true; // the first patch of each search is a big jump: let the camera settle longer
           return Calib.findNull(async v => {
-            const r = await measureAt({ mode: 'checker', ch, lo: a, hi: b, v, ped: CAL_PED, run: true }, first ? 2500 : 800, 2600, key);
+            const r = await measureAt({ mode: 'checker', ch, lo: a, hi: b, v, ped: CAL_PED, pat: 'c1', run: true }, first ? 2500 : 800, 2600, key);
             first = false; return r;
           }, p, g);
         },
@@ -604,7 +606,44 @@ async function runCal() {
   auto = null; refreshAuto(false);
 }
 
+
+// Grey null with four different patterns. If the panel averages a pattern correctly, all four
+// agree; a pattern that disagrees is being shown with crosstalk and can't be trusted.
+const PATTERNS = [['c1', '1×1 checker'], ['c2', '2×2 checker'], ['h', 'horizontal lines'], ['v', 'vertical lines']];
+async function runPatterns() {
+  auto = { stop: false }; refreshAuto();
+  $('autoBig').hidden = true; $('autoPlot').hidden = true;
+  const rows = [];
+  const showPat = () => { $('autoTbl').hidden = false;
+    $('autoTbl').tHead.rows[0].innerHTML = '<th>Pattern</th><th>Null v</th><th>Gamma</th><th>±</th>';
+    $('autoTbl').tBodies[0].innerHTML = rows.map(r => `<tr><td>${r.label}</td><td>${r.v.toFixed(1)}</td><td>${r.gamma.toFixed(3)}</td><td>${r.err.toFixed(1)}</td></tr>`).join(''); };
+  try {
+    for (const [i, [pat, label]] of PATTERNS.entries()) {
+      $('autoMsg').textContent = `Pattern ${i + 1} of ${PATTERNS.length}: ${label}. Keep the phone still.`;
+      let first = true;
+      const r = await Calib.findNull(async v => {
+        const m = await measureAt({ mode: 'checker', ch: 'grey', lo: 0, hi: 255, ped: 0, pat, v, run: true }, first ? 2500 : 800, 2600);
+        first = false; return m;
+      }, 187, 2.2);
+      // rough uncertainty: half the code range over which the fit stays within the noise
+      const err = Math.max(0.3, r.c / Math.max(r.k, 0.1) / 2);
+      rows.push({ pat, label, v: r.v0, gamma: Math.log(0.5) / Math.log(r.v0 / 255), err, floor: r.c });
+      showPat();
+    }
+    const vs = rows.map(r => r.v), spread = Math.max(...vs) - Math.min(...vs);
+    $('autoBig').hidden = false;
+    $('autoBig').innerHTML = `${spread.toFixed(1)}<small> levels between patterns</small>`;
+    $('autoMsg').textContent = (spread <= 1 ? 'Patterns agree: the checkerboard method is trustworthy on this screen.' : 'Patterns disagree: this screen shows some patterns with crosstalk.') + ' Tap Copy results and send them.';
+    lastAuto = { test: 'patterns', spread: +spread.toFixed(2), rows: rows.map(r => ({ pattern: r.label, v: +r.v.toFixed(2), gamma: +r.gamma.toFixed(3), floor: +r.floor.toFixed(2) })) };
+  } catch (e) { $('autoMsg').textContent = e.message; }
+  try { await command({ run: false, pat: 'c1' }); } catch (e) {}
+  auto = null; refreshAuto(false);
+  $('autoTbl').tHead.rows[0].innerHTML = '<th>Test value v</th><th>Step</th><th>SNR</th><th></th>';
+  showPat();
+}
+
 $('autoNull').onclick = () => runAuto('null');
+$('autoPat').onclick = runPatterns;
 $('autoStep').onclick = () => runAuto('step');
 $('autoStop').onclick = () => { if (auto) auto.stop = true; };
 $('calStop').onclick = () => { if (auto) auto.stop = true; };
