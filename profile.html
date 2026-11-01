@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-3">
+<meta name="calibrue-build" content="2026.11.02-4">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Profile</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -67,7 +67,7 @@ th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:righ
 <main>
   <header>
     <h1>Calibrue · Windows profile</h1>
-    <p class="sub">Turns the iPhone measurement into an .icc profile for this laptop. <span id="build"></span> <a href="laptop.html">Back to the laptop page</a></p>
+    <p class="sub">Turns the iPhone measurement into an .icc profile for this laptop. <span id="build"></span> <a href="laptop.html">Back to the laptop page</a> · <a href="report.html">Calibration report</a></p>
   </header>
 
   <section>
@@ -124,7 +124,8 @@ th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:righ
 
   <section>
     <h2><span class="n">5</span>Download the profile</h2>
-    <div class="row"><button class="primary" id="dl" type="button" disabled>Download .icc profile</button><span class="note" id="dlName"></span></div>
+    <div class="row"><button class="primary" id="inst" type="button" disabled>Download one-click installer</button><button id="dl" type="button" disabled>Profile only (.icc)</button><span class="note" id="dlName"></span></div>
+    <p class="note">The installer is a small Windows script: double-click it, allow it, and it installs the profile and switches on Windows display calibration. If Windows says it protected your PC, choose More info → Run anyway.</p>
   </section>
 
   <section>
@@ -160,8 +161,9 @@ th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:righ
     <div class="row"><button id="wExit" type="button">Done</button><span id="wOut2" style="font-size:13px"></span></div>
   </div>
 </div>
-<script src="calib.js?v=2026.11.02-3"></script>
-<script src="icc.js?v=2026.11.02-3"></script>
+<script src="calib.js?v=2026.11.02-4"></script>
+<script src="icc.js?v=2026.11.02-4"></script>
+<script src="install.js?v=2026.11.02-4"></script>
 <script>
 const $ = id => document.getElementById(id);
 $('build').textContent = 'Version ' + document.querySelector('meta[name=calibrue-build]').content + '.';
@@ -172,7 +174,7 @@ try { cal = JSON.parse(localStorage.getItem('calibrue.calibration') || 'null'); 
 const ok = cal && cal.ramps && ['red', 'green', 'blue'].every(c => Array.isArray(cal.ramps[c]) && cal.ramps[c].length === 256);
 
 const day = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; // local date
-const fileName = () => `calibrue-${day(new Date(cal.when))}.icc`;
+const fileName = () => `calibrue-${day(new Date(cal.when))}${cal.refinements ? '-r' + cal.refinements : ''}.icc`;
 
 if (ok) {
   $('noCal').hidden = true; $('hasCal').hidden = false;
@@ -188,7 +190,7 @@ if (ok) {
   $('calBal').textContent = spread < 2 ? `channels within ${spread.toFixed(1)} levels: no visible tint` : `channels differ by up to ${spread.toFixed(1)} levels: the profile corrects a tint`;
   $('calTbl').tBodies[0].innerHTML = [32, 64, 96, 128, 160, 192, 224, 255].map(i =>
     `<tr><td>${i}</td>${['red', 'green', 'blue'].map(c => `<td>${(cal.ramps[c][i] / 65535 * 255).toFixed(1)}</td>`).join('')}</tr>`).join('');
-  $('dl').disabled = false; $('dlName').textContent = fileName(); $('instName').textContent = fileName();
+  $('dl').disabled = false; $('inst').disabled = false; $('dlName').textContent = fileName(); $('instName').textContent = fileName();
 }
 
 // ---- EDID ----
@@ -255,14 +257,17 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') $('wFull').h
 showWhite();
 
 // ---- Download ----
-$('dl').onclick = () => {
-  const bytes = ICC.build({ ramps: Calib.applyGains(cal.ramps, gains()), primaries, name: `Calibrue ${day(new Date(cal.when))} gamma 2.2`,
+function profileBytes() {
+  return ICC.build({ ramps: Calib.applyGains(cal.ramps, gains()), primaries, name: `Calibrue ${day(new Date(cal.when))} gamma 2.2${cal.refinements ? ' r' + cal.refinements : ''}`,
     copyright: 'Created with Calibrue (zia32.github.io/calibrue)' });
-  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.iccprofile' }));
-  const a = document.createElement('a'); a.href = url; a.download = fileName(); document.body.appendChild(a); a.click(); a.remove();
+}
+function saveFile(data, name, type) {
+  const url = URL.createObjectURL(new Blob([data], { type }));
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
-  $('dlName').textContent = `Downloaded ${fileName()}. Now install it (step 6).`;
-};
+}
+$('dl').onclick = () => { saveFile(profileBytes(), fileName(), 'application/vnd.iccprofile'); $('dlName').textContent = `Downloaded ${fileName()}. Now install it (step 6).`; };
+$('inst').onclick = () => { saveFile(Installer.script(profileBytes(), fileName()), 'Install Calibrue profile.cmd', 'application/octet-stream'); $('dlName').textContent = 'Downloaded the installer. Open it and allow it.'; };
 </script>
 </body>
 </html>

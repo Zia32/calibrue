@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-3">
+<meta name="calibrue-build" content="2026.11.02-4">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Laptop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -131,6 +131,7 @@ button.dl{font-size:15px;padding:10px 14px}
   <div class="prog" id="prog" hidden></div>
   <a class="plink" href="#" id="showDone" hidden>Show profile download →</a>
   <a class="plink" href="profile.html">Profile details and EDID →</a>
+  <a class="plink" href="report.html">Calibration report →</a>
 
   <div class="note">
     <kbd>←</kbd><kbd>→</kbd> v ±1 · <kbd>Shift</kbd> ±8 · <kbd>Space</kbd> start/pause · <kbd>H</kbd> panel · <kbd>F</kbd> fullscreen<br><br>
@@ -145,7 +146,8 @@ button.dl{font-size:15px;padding:10px 14px}
     <h2 id="dTitle">Profile ready</h2>
     <div class="big" id="dGamma"></div>
     <p class="sub" id="dNote" style="margin:0"></p>
-    <div class="dlrow"><button class="primary dl" id="dDl" type="button">Download profile</button><span class="sub" id="dFile"></span></div>
+    <div class="dlrow"><button class="primary dl" id="dInst" type="button">Download one-click installer</button><button class="dl" id="dDl" type="button">Profile only (.icc)</button></div>
+    <p class="sub" id="dFile" style="margin:0"></p>
     <p class="sub" style="margin:0">White looks slightly yellow or blue next to another screen? <a href="profile.html#white">Match the white</a> first, then download from that page.</p>
     <details id="dEdid">
       <summary>Optional: add your screen's colours (for Photoshop, Lightroom, browsers)</summary>
@@ -154,24 +156,31 @@ button.dl{font-size:15px;padding:10px 14px}
       <p class="sub" id="dEdidOut"></p>
     </details>
     <div>
-      <b>Install (about 1 minute)</b>
+      <b>Install (about 30 seconds)</b>
+      <ol>
+        <li>Open the downloaded <b>Install Calibrue profile.cmd</b>.</li>
+        <li>If Windows says it protected your PC: <b>More info</b> → <b>Run anyway</b>. (It warns about every downloaded script.)</li>
+        <li>Click <b>Yes</b> when Windows asks for permission. The screen changes when it finishes.</li>
+        <li>Restart the browser, open this page again and pair. Then tap <b>Verify</b> on the iPhone.</li>
+      </ol>
+      <details><summary>Install by hand instead</summary>
       <ol>
         <li>Press <kbd>Win</kbd> + <kbd>R</kbd>, type <b>colorcpl</b>, Enter.</li>
         <li><b>Devices</b> tab: tick <b>Use my settings for this device</b>. Remove any older Calibrue profile.</li>
         <li><b>Add…</b> → <b>Browse…</b> → pick <span id="dFile2"></span> → Add → <b>Set as Default Profile</b>.</li>
         <li><b>Advanced</b> tab → <b>Change system defaults…</b> → <b>Advanced</b> → tick <b>Use Windows display calibration</b> → Close.</li>
-        <li>Restart the browser, open this page again and pair. Then tap <b>Verify</b> on the iPhone.</li>
-      </ol>
+      </ol></details>
     </div>
-    <div class="dlrow"><button id="dClose" type="button">Close</button></div>
+    <div class="dlrow"><button id="dClose" type="button">Close</button><a class="plink" href="report.html">Calibration report →</a></div>
   </div>
 </div>
 
-<script src="calib.js?v=2026.11.02-3"></script>
-<script src="icc.js?v=2026.11.02-3"></script>
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-3"></script>
-<script src="lib/qrcode-1.0.0.min.js?v=2026.11.02-3"></script>
-<script src="link.js?v=2026.11.02-3"></script>
+<script src="calib.js?v=2026.11.02-4"></script>
+<script src="icc.js?v=2026.11.02-4"></script>
+<script src="install.js?v=2026.11.02-4"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-4"></script>
+<script src="lib/qrcode-1.0.0.min.js?v=2026.11.02-4"></script>
+<script src="link.js?v=2026.11.02-4"></script>
 <script>
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d', { alpha: false });
@@ -317,9 +326,16 @@ function onMsg(m) {
     send({ type: 'calibration-saved' });
     return;
   }
-  if (m && m.type === 'refine' && calibration && Number.isFinite(m.gAfter)) { // verification was off target
-    if (calibration.refinedFrom !== m.gAfter) {
-      const r = { ...calibration, ramps: Calib.refineRamps(calibration.ramps, m.gAfter), refinedFrom: m.gAfter, when: new Date().toISOString(), refinements: (calibration.refinements || 0) + 1 };
+  if (m && m.type === 'verify-result' && calibration) { // kept for the report
+    if (!(calibration.verifications || []).some(v => v.when === m.when)) saveCal({ ...calibration, verifications: [...(calibration.verifications || []), { ...m, profile: profName() }] });
+    send({ type: 'verify-saved' });
+    return;
+  }
+  if (m && m.type === 'refine' && calibration && (Array.isArray(m.pts) || Number.isFinite(m.gAfter))) { // verification was off target
+    const key = JSON.stringify(m.pts || m.gAfter);
+    if (calibration.refinedKey !== key) {
+      const ramps = Array.isArray(m.pts) ? Calib.refineRampsCurve(calibration.ramps, m.pts) : Calib.refineRamps(calibration.ramps, m.gAfter);
+      const r = { ...calibration, ramps, refinedFrom: m.gAfter, refinedKey: key, when: new Date().toISOString(), refinements: (calibration.refinements || 0) + 1 };
       saveCal(r); showDone('refined');
     }
     send({ type: 'refined' });
@@ -398,14 +414,20 @@ function showDone(kind) {
 $('dEdidIn').addEventListener('input', readEdid);
 try { const e = localStorage.getItem('calibrue.edid'); if (e) $('dEdidIn').value = e; } catch (e) {}
 readEdid();
-$('dDl').onclick = () => {
+function profileBytes() {
   let wg = null; try { const w = JSON.parse(localStorage.getItem('calibrue.white') || '{}'); if (w.t || w.m) wg = Calib.whiteGains(w.t, w.m); } catch (e) {}
-  const bytes = ICC.build({ ramps: Calib.applyGains(calibration.ramps, wg), primaries: edidPrimaries || ICC.SRGB,
+  return ICC.build({ ramps: Calib.applyGains(calibration.ramps, wg), primaries: edidPrimaries || ICC.SRGB,
     name: `Calibrue ${dayOf(calibration.when)} gamma 2.2${calibration.refinements ? ' r' + calibration.refinements : ''}`, copyright: 'Created with Calibrue (zia32.github.io/calibrue)' });
-  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.iccprofile' }));
-  const a = document.createElement('a'); a.href = url; a.download = profName(); document.body.appendChild(a); a.click(); a.remove();
+}
+function saveFile(data, name, type) {
+  const url = URL.createObjectURL(new Blob([data], { type }));
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
-  $('dFile').textContent = 'Downloaded ' + profName() + '. Now install it:';
+}
+$('dDl').onclick = () => { saveFile(profileBytes(), profName(), 'application/vnd.iccprofile'); $('dFile').textContent = 'Downloaded ' + profName() + '. Install it by hand (below).'; };
+$('dInst').onclick = () => {
+  saveFile(Installer.script(profileBytes(), profName()), 'Install Calibrue profile.cmd', 'application/octet-stream');
+  $('dFile').textContent = 'Downloaded the installer for ' + profName() + '. Open it:';
 };
 $('dClose').onclick = () => { $('done').hidden = true; };
 $('showDone').onclick = e => { e.preventDefault(); showDone(calibration && calibration.refinements ? 'refined' : 'new'); };

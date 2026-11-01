@@ -244,6 +244,27 @@
     return out;
   }
 
-  const api = { whiteGains, applyGains, lockstep, measureCurves, shiftGamma, refineRamps, fitNull, findNull, fractionAt, PLAN, measureCurve, smoothModel, curveF, curveV, ramp, gammaHalf };
+  // Whole-curve refinement from a verification at several grey levels. pts: [{v, F}] measured
+  // with the current ramps installed (v = input level, F = its light), endpoints included.
+  // Each input i is pre-warped to the input that, on the measured curve, gives the target light.
+  function refineRampsCurve(ramps, pts, target = 2.2) {
+    const meas = pts.map(p => ({ v: p.v, F: p.F }));
+    const out = {};
+    for (const c of ['red', 'green', 'blue']) {
+      const r = ramps[c], arr = new Array(256);
+      let prev = 0;
+      for (let i = 0; i < 256; i++) {
+        const u = i === 0 ? 0 : i === 255 ? 255 : curveV(meas, (i / 255) ** target);
+        const j = Math.min(254, Math.floor(u)), f = u - j;
+        prev = Math.max(prev, Math.round(r[j] * (1 - f) + r[j + 1] * f)); arr[i] = prev;
+      }
+      out[c] = arr;
+    }
+    return out;
+  }
+  // Perceived lightness L* (CIE) of a relative light level, for judging errors as the eye does.
+  const Lstar = Y => Y > 216 / 24389 ? 116 * Math.cbrt(Y) - 16 : Y * 24389 / 27;
+
+  const api = { refineRampsCurve, Lstar, whiteGains, applyGains, lockstep, measureCurves, shiftGamma, refineRamps, fitNull, findNull, fractionAt, PLAN, measureCurve, smoothModel, curveF, curveV, ramp, gammaHalf };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Calib = api;
 })(typeof window !== 'undefined' ? window : globalThis);
