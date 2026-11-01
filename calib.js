@@ -226,6 +226,24 @@
     return out;
   }
 
-  const api = { lockstep, measureCurves, shiftGamma, refineRamps, fitNull, findNull, fractionAt, PLAN, measureCurve, smoothModel, curveF, curveV, ramp, gammaHalf };
+  // White balance by eye. t: −100 (warmer) … +100 (cooler); m: −50 (greener) … +50 (more magenta).
+  // Returns channel gains with the largest at 1, so white only ever loses a little brightness.
+  function whiteGains(t = 0, m = 0) {
+    // fine steps: light goes with level^2.2, so ±100 here is about ±25% light in the changed channel
+    let r = 1 - Math.max(0, t) * 0.0012, g = 1 - Math.abs(t) * 0.0003, b = 1 - Math.max(0, -t) * 0.0012;
+    g *= 1 - Math.max(0, m) * 0.0016; r *= 1 - Math.max(0, -m) * 0.0008; b *= 1 - Math.max(0, -m) * 0.0008;
+    const k = Math.max(r, g, b);
+    return { red: r / k, green: g / k, blue: b / k };
+  }
+  // Scale each channel's ramp. Scaling the output level by g scales the light by g^γ at every
+  // level (light ∝ level^γ), so greys keep the white's new tint all the way down.
+  function applyGains(ramps, gains) {
+    if (!gains) return ramps;
+    const out = {};
+    for (const c of ['red', 'green', 'blue']) out[c] = ramps[c].map(x => Math.round(x * gains[c]));
+    return out;
+  }
+
+  const api = { whiteGains, applyGains, lockstep, measureCurves, shiftGamma, refineRamps, fitNull, findNull, fractionAt, PLAN, measureCurve, smoothModel, curveF, curveV, ramp, gammaHalf };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Calib = api;
 })(typeof window !== 'undefined' ? window : globalThis);

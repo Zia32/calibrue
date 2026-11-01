@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-2">
+<meta name="calibrue-build" content="2026.11.02-3">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Laptop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -146,6 +146,7 @@ button.dl{font-size:15px;padding:10px 14px}
     <div class="big" id="dGamma"></div>
     <p class="sub" id="dNote" style="margin:0"></p>
     <div class="dlrow"><button class="primary dl" id="dDl" type="button">Download profile</button><span class="sub" id="dFile"></span></div>
+    <p class="sub" style="margin:0">White looks slightly yellow or blue next to another screen? <a href="profile.html#white">Match the white</a> first, then download from that page.</p>
     <details id="dEdid">
       <summary>Optional: add your screen's colours (for Photoshop, Lightroom, browsers)</summary>
       <p class="sub">Paste the four Chromaticity lines from HWiNFO (Monitor → your laptop screen), or the output of the command on the <a href="profile.html">profile page</a>. Without them the profile assumes standard sRGB.</p>
@@ -166,11 +167,11 @@ button.dl{font-size:15px;padding:10px 14px}
   </div>
 </div>
 
-<script src="calib.js?v=2026.11.02-2"></script>
-<script src="icc.js?v=2026.11.02-2"></script>
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-2"></script>
-<script src="lib/qrcode-1.0.0.min.js?v=2026.11.02-2"></script>
-<script src="link.js?v=2026.11.02-2"></script>
+<script src="calib.js?v=2026.11.02-3"></script>
+<script src="icc.js?v=2026.11.02-3"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-3"></script>
+<script src="lib/qrcode-1.0.0.min.js?v=2026.11.02-3"></script>
+<script src="link.js?v=2026.11.02-3"></script>
 <script>
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d', { alpha: false });
@@ -398,7 +399,8 @@ $('dEdidIn').addEventListener('input', readEdid);
 try { const e = localStorage.getItem('calibrue.edid'); if (e) $('dEdidIn').value = e; } catch (e) {}
 readEdid();
 $('dDl').onclick = () => {
-  const bytes = ICC.build({ ramps: calibration.ramps, primaries: edidPrimaries || ICC.SRGB,
+  let wg = null; try { const w = JSON.parse(localStorage.getItem('calibrue.white') || '{}'); if (w.t || w.m) wg = Calib.whiteGains(w.t, w.m); } catch (e) {}
+  const bytes = ICC.build({ ramps: Calib.applyGains(calibration.ramps, wg), primaries: edidPrimaries || ICC.SRGB,
     name: `Calibrue ${dayOf(calibration.when)} gamma 2.2${calibration.refinements ? ' r' + calibration.refinements : ''}`, copyright: 'Created with Calibrue (zia32.github.io/calibrue)' });
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.iccprofile' }));
   const a = document.createElement('a'); a.href = url; a.download = profName(); document.body.appendChild(a); a.click(); a.remove();

@@ -35,7 +35,7 @@ The iPhone camera only works on HTTPS pages, so the files must be hosted.
 4. The laptop shows **Profile ready**: download, optional EDID colours, install steps.
 5. After installing, pair again and tap **Verify** on the phone. Within ±0.03 of 2.2 it says on target. Otherwise the laptop builds a refined profile (`-r1`) to install instead.
 
-`profile.html` still has the details view and EDID tools. The single tests are under **Advanced tools** on the phone.
+`profile.html` has the details view, EDID tools and **Match the white**: two sliders (warmer/cooler, greener/magenta) to match the laptop's white to another screen by eye. The result scales the three ramps (largest gain stays 1), so greys carry the same tint and peak brightness drops only a few percent. The camera is not used for this because its colour response differs from the eye's between different panel types. The single tests are under **Advanced tools** on the phone.
 
 ## 3. Prepare
 

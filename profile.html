@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-2">
+<meta name="calibrue-build" content="2026.11.02-3">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Profile</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -47,6 +47,15 @@ figure{margin:0;display:flex;flex-direction:column;gap:6px;min-width:0}
 figcaption{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600}
 canvas{width:100%;height:auto;display:block;border-radius:6px;background:#000}
 a{color:var(--accent)}
+.swatch{height:min(46vh,360px);border-radius:10px;border:1px solid var(--line);background:#fff}
+.sliders{display:grid;grid-template-columns:auto 1fr auto;gap:8px 12px;align-items:center;font-size:13px}
+.sliders input[type=range]{width:100%}
+.sliders .end{color:var(--muted);font-size:12px}
+#wFull{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;justify-content:flex-end}
+#wFull .bar{background:rgba(20,22,24,.86);color:#e7ebee;padding:12px max(16px,env(safe-area-inset-left)) 16px;display:flex;flex-direction:column;gap:8px}
+#wFull .bar .sliders .end{color:#b7c0c7}
+#wFull button{color:#e7ebee;border-color:#55606a}
+
 ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px;max-width:66ch}
 kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:4px;padding:0 5px}
 table{border-collapse:collapse;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
@@ -88,8 +97,24 @@ th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:righ
     <div id="edidOut" class="note">Using standard sRGB until you paste values.</div>
   </section>
 
+  <section id="white">
+    <h2><span class="n">3</span>Match the white (optional)</h2>
+    <p>Calibration fixes greys and midtones but keeps the screen's own white. If it looks slightly yellow or blue next to another screen you trust, match it here by eye.</p>
+    <ol>
+      <li>Open a plain white page on the other screen (for example a blank browser tab) and put it beside this laptop.</li>
+      <li>Set the laptop brightness to 100%. A dimmer white looks greyish next to a brighter one even when its colour is right.</li>
+      <li>Move the sliders until the white below matches the other screen's white. Use <b>Full screen</b> for an easier comparison.</li>
+    </ol>
+    <div class="swatch" id="wSwatch"></div>
+    <div class="sliders">
+      <span class="end">Warmer</span><input id="wT" type="range" min="-100" max="100" step="1" value="0" aria-label="Warmer or cooler"><span class="end">Cooler</span>
+      <span class="end">Greener</span><input id="wM" type="range" min="-50" max="50" step="1" value="0" aria-label="Greener or more magenta"><span class="end">Magenta</span>
+    </div>
+    <div class="row"><button id="wFs" type="button">Full screen</button><button id="wReset" type="button">Reset</button><span class="note" id="wOut"></span></div>
+  </section>
+
   <section>
-    <h2><span class="n">3</span>Preview</h2>
+    <h2><span class="n">4</span>Preview</h2>
     <p>The right side shows exactly what the profile will send to the screen. Compare the dark and middle greys.</p>
     <div class="previews">
       <figure><figcaption>Now</figcaption><canvas id="pvBefore" width="640" height="400" aria-label="Test image as the screen shows it now"></canvas></figure>
@@ -98,12 +123,12 @@ th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:righ
   </section>
 
   <section>
-    <h2><span class="n">4</span>Download the profile</h2>
+    <h2><span class="n">5</span>Download the profile</h2>
     <div class="row"><button class="primary" id="dl" type="button" disabled>Download .icc profile</button><span class="note" id="dlName"></span></div>
   </section>
 
   <section>
-    <h2><span class="n">5</span>Install it in Windows (about 1 minute)</h2>
+    <h2><span class="n">6</span>Install it in Windows (about 1 minute)</h2>
     <ol>
       <li>Press <kbd>Win</kbd> + <kbd>R</kbd>, type <b>colorcpl</b> and press Enter. Colour Management opens.</li>
       <li><b>Devices</b> tab: check the Device is your laptop screen, then tick <b>Use my settings for this device</b>.</li>
@@ -116,7 +141,7 @@ th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:righ
   </section>
 
   <section>
-    <h2><span class="n">6</span>Check that it worked</h2>
+    <h2><span class="n">7</span>Check that it worked</h2>
     <ol>
       <li>Keep the profile on. Plug in the charger.</li>
       <li>Open the <a href="laptop.html">laptop page</a> and pair the iPhone again.</li>
@@ -126,12 +151,23 @@ th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:righ
   </section>
 </main>
 
-<script src="calib.js?v=2026.11.02-2"></script>
-<script src="icc.js?v=2026.11.02-2"></script>
+<div id="wFull" hidden>
+  <div class="bar">
+    <div class="sliders">
+      <span class="end">Warmer</span><input id="wT2" type="range" min="-100" max="100" step="1" value="0" aria-label="Warmer or cooler"><span class="end">Cooler</span>
+      <span class="end">Greener</span><input id="wM2" type="range" min="-50" max="50" step="1" value="0" aria-label="Greener or more magenta"><span class="end">Magenta</span>
+    </div>
+    <div class="row"><button id="wExit" type="button">Done</button><span id="wOut2" style="font-size:13px"></span></div>
+  </div>
+</div>
+<script src="calib.js?v=2026.11.02-3"></script>
+<script src="icc.js?v=2026.11.02-3"></script>
 <script>
 const $ = id => document.getElementById(id);
 $('build').textContent = 'Version ' + document.querySelector('meta[name=calibrue-build]').content + '.';
 let cal = null, primaries = ICC.SRGB;
+var white = { t: 0, m: 0 }; // white-point adjustment, see 'Match the white'
+function gains() { return (white.t || white.m) ? Calib.whiteGains(white.t, white.m) : null; }
 try { cal = JSON.parse(localStorage.getItem('calibrue.calibration') || 'null'); } catch (e) {}
 const ok = cal && cal.ramps && ['red', 'green', 'blue'].every(c => Array.isArray(cal.ramps[c]) && cal.ramps[c].length === 256);
 
@@ -192,20 +228,40 @@ function drawPreview() {
   const gb = b.getContext('2d'); gb.drawImage(a, 0, 0);
   if (!ok) return;
   const img = gb.getImageData(0, 0, W, H), d = img.data;
-  const lut = ['red', 'green', 'blue'].map(c => cal.ramps[c].map(x => Math.round(x / 65535 * 255)));
+  const rr = Calib.applyGains(cal.ramps, gains());
+  const lut = ['red', 'green', 'blue'].map(c => rr[c].map(x => Math.round(x / 65535 * 255)));
   for (let i = 0; i < d.length; i += 4) { d[i] = lut[0][d[i]]; d[i + 1] = lut[1][d[i + 1]]; d[i + 2] = lut[2][d[i + 2]]; }
   gb.putImageData(img, 0, 0);
 }
 drawPreview();
 
+// ---- Match the white ----
+try { white = { ...white, ...JSON.parse(localStorage.getItem('calibrue.white') || '{}') }; } catch (e) {}
+function showWhite() {
+  const g = Calib.whiteGains(white.t, white.m);
+  const col = `rgb(${Math.round(255 * g.red)},${Math.round(255 * g.green)},${Math.round(255 * g.blue)})`;
+  $('wSwatch').style.background = col; $('wFull').style.background = col;
+  ['wT', 'wT2'].forEach(id => $(id).value = white.t); ['wM', 'wM2'].forEach(id => $(id).value = white.m);
+  const txt = (white.t || white.m) ? `Red ${Math.round(g.red * 100)}% · Green ${Math.round(g.green * 100)}% · Blue ${Math.round(g.blue * 100)}%. Included in the profile.` : 'Unchanged: the screen\'s own white.';
+  $('wOut').textContent = txt; $('wOut2').textContent = txt;
+  try { localStorage.setItem('calibrue.white', JSON.stringify(white)); } catch (e) {}
+  drawPreview();
+}
+for (const [a, b] of [['wT', 'wT2'], ['wM', 'wM2']]) for (const id of [a, b]) $(id).addEventListener('input', e => { white[a === 'wT' ? 't' : 'm'] = +e.target.value; showWhite(); });
+$('wReset').onclick = () => { white = { t: 0, m: 0 }; showWhite(); };
+$('wFs').onclick = () => { $('wFull').hidden = false; document.documentElement.requestFullscreen?.().catch(() => {}); };
+$('wExit').onclick = () => { $('wFull').hidden = true; if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('wFull').hidden = true; });
+showWhite();
+
 // ---- Download ----
 $('dl').onclick = () => {
-  const bytes = ICC.build({ ramps: cal.ramps, primaries, name: `Calibrue ${day(new Date(cal.when))} gamma 2.2`,
+  const bytes = ICC.build({ ramps: Calib.applyGains(cal.ramps, gains()), primaries, name: `Calibrue ${day(new Date(cal.when))} gamma 2.2`,
     copyright: 'Created with Calibrue (zia32.github.io/calibrue)' });
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.iccprofile' }));
   const a = document.createElement('a'); a.href = url; a.download = fileName(); document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
-  $('dlName').textContent = `Downloaded ${fileName()}. Now install it (step 5).`;
+  $('dlName').textContent = `Downloaded ${fileName()}. Now install it (step 6).`;
 };
 </script>
 </body>
