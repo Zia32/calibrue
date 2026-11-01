@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="calibrue-build" content="2026.11.01-3">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Laptop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -51,7 +52,7 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
 <div id="panel">
   <div>
     <h1>Calibrue · laptop</h1>
-    <p class="sub">Press the iPhone's rear camera on the centre square.</p>
+    <p class="sub">Press the iPhone's rear camera on the centre square. <span id="build"></span></p>
   </div>
 
   <div class="pair">
@@ -120,8 +121,8 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
   </div>
 </div>
 
-<script src="lib/peerjs-1.5.4.min.js"></script>
-<script src="lib/qrcode-1.0.0.min.js"></script>
+<script src="lib/peerjs-1.5.4.min.js?v=2026.11.01-3"></script>
+<script src="lib/qrcode-1.0.0.min.js?v=2026.11.01-3"></script>
 <script>
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d', { alpha: false });
@@ -252,7 +253,9 @@ function onMsg(m) {
   pendingAck = m.id; // answered after the new patch is on screen (next frame)
 }
 async function keepAwake() { try { wake = await navigator.wakeLock?.request('screen'); } catch (e) {} }
-const phoneUrl = new URL('phone.html?pair=' + code, location.href).href;
+const BUILD = document.querySelector('meta[name=calibrue-build]').content;
+$('build').textContent = 'Version ' + BUILD + '.';
+const phoneUrl = new URL('phone.html?pair=' + code + '&v=' + BUILD, location.href).href; // new query = fresh copy, not a cached one
 if (window.QRCode) new QRCode($('qr'), { text: phoneUrl, width: 192, height: 192, correctLevel: QRCode.CorrectLevel.M });
 else $('qr').hidden = true;
 if (window.Peer) {
