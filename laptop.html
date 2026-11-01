@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Calibrue · Laptop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: black stage with the measured patch centred; a floating instrument panel top-left. */
+:root{
+  --panel:#eef1f3; --fg:#121619; --muted:#56616a; --line:#cfd6db; --accent:#1f6bd6; --warn:#b4471b;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root{--panel:#161a1d;--fg:#e6eaed;--muted:#97a2ab;--line:#2b3237;--accent:#6aa1f4;--warn:#f0875a;color-scheme:dark}}
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:var(--sans)}
+canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block}
+#panel{position:fixed;left:16px;top:16px;width:300px;max-height:calc(100vh - 32px);overflow:auto;box-sizing:border-box;
+  background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.4;
+  display:flex;flex-direction:column;gap:12px}
+[hidden]{display:none!important}
+h1{font-size:15px;margin:0;font-weight:600}
+.sub{color:var(--muted);font-size:12px;margin:2px 0 0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
+label{display:flex;flex-direction:column;gap:3px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+input,select,button{font:inherit;font-size:13px;color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:6px;padding:5px 7px;text-transform:none;letter-spacing:0}
+input[type=range]{padding:0;border:0}
+.wide{grid-column:1/-1}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.read{font-family:var(--mono);font-variant-numeric:tabular-nums;display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:12px}
+.read dt{color:var(--muted)} .read dd{margin:0;text-align:right}
+.big{font-family:var(--mono);font-size:28px;font-weight:600;font-variant-numeric:tabular-nums}
+.note{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
+.warn{color:var(--warn)}
+kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 4px}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div id="panel">
+  <div>
+    <h1>Calibrue · M1 signal test</h1>
+    <p class="sub">Laptop side. Press the iPhone's rear camera on the centre square.</p>
+  </div>
+
+  <div>
+    <div class="sub">Test value</div>
+    <div class="big" id="vRead">128</div>
+  </div>
+
+  <div class="grid">
+    <label class="wide">Mode
+      <select id="mode">
+        <option value="delta">Step test: v vs v + Δ</option>
+        <option value="checker">Null test: v vs checkerboard</option>
+        <option value="static">Static: v only</option>
+      </select>
+    </label>
+    <label>Channel
+      <select id="ch"><option value="grey">Grey</option><option value="red">Red</option><option value="green">Green</option><option value="blue">Blue</option></select>
+    </label>
+    <label>Flicker Hz
+      <select id="freq"><option>4</option><option>5</option><option selected>6</option><option>8</option><option>10</option></select>
+    </label>
+    <label class="wide">v (0–255)
+      <input id="v" type="range" min="0" max="255" value="128">
+    </label>
+    <label id="dWrap">Δ (levels)
+      <input id="d" type="number" min="1" max="64" value="1">
+    </label>
+    <label>Patch
+      <select id="size"><option value="square">Centre square</option><option value="full">Full screen</option></select>
+    </label>
+    <label class="ck">Checker low
+      <input id="lo" type="number" min="0" max="255" value="0">
+    </label>
+    <label class="ck">Checker high
+      <input id="hi" type="number" min="0" max="255" value="255">
+    </label>
+  </div>
+
+  <div class="row">
+    <button class="primary" id="run">Start flicker</button>
+    <button id="fs">Fullscreen</button>
+    <button id="hide">Hide panel</button>
+  </div>
+
+  <dl class="read">
+    <dt>Display refresh</dt><dd id="rR">measuring…</dd>
+    <dt>Actual flicker</dt><dd id="rF">–</dd>
+    <dt>Dropped frames</dt><dd id="rD">0</dd>
+    <dt>Pixel ratio</dt><dd id="rP">–</dd>
+  </dl>
+
+  <div class="note">
+    <kbd>←</kbd><kbd>→</kbd> v ±1 · <kbd>Shift</kbd> ±8 · <kbd>Space</kbd> start/pause · <kbd>H</kbd> panel · <kbd>F</kbd> fullscreen<br><br>
+    Before testing: turn off Night light and adaptive brightness, and remove any custom colour profile (it changes the patch values).<br><br>
+    <span class="warn">Warning: this page flashes. Don't look at it directly if you're sensitive to flashing light.</span>
+  </div>
+</div>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d', { alpha: false });
+const $ = id => document.getElementById(id);
+const S = { mode: 'delta', ch: 'grey', v: 128, d: 1, lo: 0, hi: 255, freq: 6, size: 'square', run: false };
+
+let R = 60, half = 5, drops = 0, frames = 0, lastT = 0, phase = -1;
+let rect = null, A = null, B = null, chk = null, chkKey = '';
+
+const clamp = x => Math.max(0, Math.min(255, Math.round(x)));
+function rgb(x) {
+  x = clamp(x);
+  return S.ch === 'grey' ? [x, x, x] : S.ch === 'red' ? [x, 0, 0] : S.ch === 'green' ? [0, x, 0] : [0, 0, x];
+}
+function makeCanvas() { const c = document.createElement('canvas'); c.width = rect.w; c.height = rect.h; return c; }
+function uniform(x) {
+  const c = makeCanvas(), g = c.getContext('2d'), [r, gg, b] = rgb(x);
+  g.fillStyle = `rgb(${r},${gg},${b})`; g.fillRect(0, 0, c.width, c.height); return c;
+}
+function checker(a, b) {
+  const c = makeCanvas(), g = c.getContext('2d'), img = g.createImageData(rect.w, rect.h), d = img.data;
+  const ca = rgb(a), cb = rgb(b); let i = 0;
+  for (let y = 0; y < rect.h; y++) for (let x = 0; x < rect.w; x++) {
+    const k = ((x + y + rect.x + rect.y) & 1) ? cb : ca;
+    d[i] = k[0]; d[i + 1] = k[1]; d[i + 2] = k[2]; d[i + 3] = 255; i += 4;
+  }
+  g.putImageData(img, 0, 0); return c;
+}
+
+function resize() {
+  const r = window.devicePixelRatio || 1;
+  cv.width = Math.round(innerWidth * r); cv.height = Math.round(innerHeight * r);
+  $('rP').textContent = r.toFixed(2);
+  layout();
+}
+function layout() {
+  const W = cv.width, H = cv.height;
+  if (S.size === 'full') rect = { x: 0, y: 0, w: W, h: H };
+  else { const s = Math.round(Math.min(W, H) * 0.6); rect = { x: Math.round((W - s) / 2), y: Math.round((H - s) / 2), w: s, h: s }; }
+  chkKey = ''; build();
+}
+function build() {
+  A = uniform(S.v);
+  if (S.mode === 'delta') B = uniform(S.v + S.d);
+  else if (S.mode === 'checker') {
+    const key = [S.lo, S.hi, S.ch, rect.w, rect.h, rect.x, rect.y].join();
+    if (key !== chkKey) { chk = checker(S.lo, S.hi); chkKey = key; }
+    B = chk;
+  } else B = A;
+  paintStage();
+}
+function paintStage() {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height);
+  if (S.size === 'square') { // thin frame outside the patch, never inside the measured area
+    ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 2;
+    ctx.strokeRect(rect.x - 6, rect.y - 6, rect.w + 12, rect.h + 12);
+  }
+  phase = -1;
+}
+function draw(st) { ctx.drawImage(st ? B : A, rect.x, rect.y); }
+
+function setHalf() {
+  half = Math.max(1, Math.round(R / (2 * S.freq)));
+  $('rF').textContent = (R / (2 * half)).toFixed(2) + ' Hz';
+}
+
+// Measure refresh rate from 90 frame intervals (median).
+(function measure() {
+  const iv = []; let prev = 0;
+  function f(t) { if (prev) iv.push(t - prev); prev = t;
+    if (iv.length < 90) requestAnimationFrame(f);
+    else { iv.sort((a, b) => a - b); R = 1000 / iv[45]; $('rR').textContent = R.toFixed(1) + ' Hz'; setHalf(); }
+  }
+  requestAnimationFrame(f);
+})();
+
+function tick(t) {
+  requestAnimationFrame(tick);
+  if (lastT && S.run && t - lastT > 1.5 * 1000 / R) { drops++; $('rD').textContent = drops; }
+  lastT = t; frames++;
+  const st = S.run ? Math.floor(frames / half) % 2 : 0;
+  if (st !== phase) { draw(st); phase = st; }
+}
+requestAnimationFrame(tick);
+
+function syncUI() {
+  $('vRead').textContent = S.v + (S.mode === 'delta' ? ' / ' + clamp(S.v + S.d) : S.mode === 'checker' ? ' vs ' + S.lo + '|' + S.hi : '');
+  $('v').value = S.v;
+  $('dWrap').hidden = S.mode !== 'delta';
+  document.querySelectorAll('.ck').forEach(e => e.hidden = S.mode !== 'checker');
+  $('run').textContent = S.run ? 'Pause' : 'Start flicker';
+}
+function setV(x) { S.v = clamp(x); build(); syncUI(); }
+
+$('mode').onchange = e => { S.mode = e.target.value; build(); syncUI(); };
+$('ch').onchange = e => { S.ch = e.target.value; build(); };
+$('freq').onchange = e => { S.freq = +e.target.value; setHalf(); };
+$('v').oninput = e => setV(+e.target.value);
+$('d').onchange = e => { S.d = Math.max(1, Math.min(64, +e.target.value || 1)); build(); syncUI(); };
+$('lo').onchange = e => { S.lo = clamp(+e.target.value); build(); syncUI(); };
+$('hi').onchange = e => { S.hi = clamp(+e.target.value); build(); syncUI(); };
+$('size').onchange = e => { S.size = e.target.value; layout(); };
+$('run').onclick = () => { S.run = !S.run; drops = 0; $('rD').textContent = 0; syncUI(); };
+$('fs').onclick = () => document.documentElement.requestFullscreen?.().catch(() => {});
+$('hide').onclick = () => { $('panel').hidden = true; };
+
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' && e.target.type === 'number') return;
+  const step = e.shiftKey ? 8 : 1;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { setV(S.v + step); e.preventDefault(); }
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { setV(S.v - step); e.preventDefault(); }
+  else if (e.key === ' ') { $('run').click(); e.preventDefault(); }
+  else if (e.key === 'h' || e.key === 'H') { $('panel').hidden = !$('panel').hidden; }
+  else if (e.key === 'f' || e.key === 'F') { $('fs').click(); }
+});
+addEventListener('resize', resize);
+document.addEventListener('fullscreenchange', resize);
+resize(); syncUI();
+</script>
+</body>
+</html>

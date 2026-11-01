@@ -1,0 +1,47 @@
+# Calibrue — Milestone 1 (signal test)
+
+Two static web pages. No build step, no server code.
+
+| File | Runs on | Does |
+|---|---|---|
+| `index.html` | either | Links to the two pages |
+| `laptop.html` | Windows laptop (Edge or Chrome) | Flickers a test patch at a fixed frequency |
+| `phone.html` | iPhone (Safari) | Measures the flicker with the camera |
+| `analysis.js` | phone | Lock-in amplitude, noise floor, SNR |
+
+## 1. Host it (GitHub Pages, free, HTTPS)
+
+The iPhone camera only works on HTTPS pages, so the files must be hosted.
+
+1. Create a public repo on GitHub, e.g. `calibrue`.
+2. Upload all five files to the repo root (Add file → Upload files → Commit).
+3. Settings → Pages → Source: "Deploy from a branch" → Branch `main`, folder `/ (root)` → Save.
+4. After about a minute the site is at `https://<your-username>.github.io/calibrue/`.
+
+## 2. Prepare
+
+- Laptop: dim room, brightness at your normal level, Night light off, adaptive brightness off, no custom colour profile loaded.
+- iPhone: clean the rear camera lens. A microfibre cloth over the camera bump protects the laptop screen.
+
+## 3. Run the go/no-go test
+
+1. Laptop: open `laptop.html`, press **F** for fullscreen. Mode **Step test**, v = 128, Δ = 1, 6 Hz. Press **Start flicker**.
+2. iPhone: open `phone.html`, tap **Start camera** (Rear), allow camera access.
+3. Press the rear camera flat on the centre square, screen facing you. Tap **Find** to lock onto the laptop's frequency.
+4. Wait 4–8 seconds and read the pill and SNR.
+5. Repeat at v = 32 and v = 224, then with Δ = 2 and Δ = 4.
+
+**Pass:** "Flicker detected" (SNR ≥ 4) with Δ = 1 at v = 128 within an 8 s window.
+**Marginal:** passes only at Δ = 2. The design still works, with 2-level precision.
+**Fail:** needs Δ ≥ 4. The contact method needs rethinking before M2.
+
+## 4. Sanity check: find your gamma midpoint
+
+1. Laptop mode **Null test** (v vs checkerboard 0|255).
+2. Step v with the arrow keys and watch the phone's "Step size" line.
+3. The v with the lowest step is where your panel's v matches 50% light.
+4. A panel at gamma 2.2 nulls near **v ≈ 186**. Much lower means a brighter-than-standard curve; much higher, darker.
+
+## 5. Send back
+
+Tap **Copy results** on the phone after each test and paste it into the chat, with the laptop settings you used (mode, v, Δ, Actual flicker, Dropped frames).

@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Calibrue · iPhone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: single column instrument readout — verdict first, then channels, spectrum, history, camera details. */
+:root{
+  --bg:#f3f5f6; --card:#ffffff; --fg:#121619; --muted:#5a656e; --line:#d6dce0; --accent:#1f6bd6;
+  --good:#1c7c46; --mid:#a86a00; --bad:#7a858d;
+  --r:#c8382f; --g:#2a8a3e; --b:#2d62c9;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1214; --card:#171b1e; --fg:#e7ebee; --muted:#97a2aa; --line:#2a3135; --accent:#6aa1f4;
+  --good:#4cc283; --mid:#e0a63a; --bad:#7f8a92; --r:#f07068; --g:#5fcf77; --b:#79a3f5; color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 var(--sans);
+  padding:max(12px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+main{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1{font-size:18px;margin:4px 0 0;font-weight:600;text-wrap:balance}
+.sub{color:var(--muted);font-size:13px;margin:2px 0 0}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:600}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+input,select,button{font:inherit;font-size:15px;color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-width:0}
+button{cursor:pointer;font-weight:600}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.full{grid-column:1/-1}
+.hz{display:flex;gap:8px}.hz input{flex:1}
+.verdict{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.pill{font-size:13px;font-weight:600;padding:4px 10px;border-radius:999px;border:1.5px solid currentColor}
+.pill.good{color:var(--good)} .pill.mid{color:var(--mid)} .pill.bad{color:var(--bad)}
+.figure{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:34px;font-weight:600;line-height:1.1}
+.figure small{font-size:14px;font-weight:400;color:var(--muted)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+.kv dt{color:var(--muted)} .kv dd{margin:0;text-align:right;overflow-wrap:anywhere}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+th{font-family:var(--sans);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:right;font-weight:600;padding:2px 0}
+th:first-child,td:first-child{text-align:left} td{text-align:right;padding:4px 0;border-top:1px solid var(--line)}
+.sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:0}
+canvas{width:100%;height:120px;display:block}
+.status{font-size:13px;color:var(--muted)}
+.err{color:var(--r)}
+video{width:96px;height:72px;border-radius:6px;background:#000;object-fit:cover;align-self:flex-end}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Calibrue · M1 signal test</h1>
+    <p class="sub">Phone side. Rear camera pressed flat on the laptop's centre square, screen facing you.</p>
+  </header>
+
+  <section>
+    <div class="controls">
+      <button class="primary full" id="start">Start camera</button>
+      <label>Camera
+        <select id="facing"><option value="environment">Rear</option><option value="user">Front</option></select>
+      </label>
+      <label>Window
+        <select id="win"><option value="2">2 s</option><option value="4" selected>4 s</option><option value="8">8 s</option></select>
+      </label>
+      <label class="full">Flicker frequency (match the laptop's "Actual flicker")
+        <span class="hz"><input id="f" type="number" step="0.01" min="1" max="15" value="6" inputmode="decimal"><button id="find" type="button">Find</button></span>
+      </label>
+    </div>
+    <div class="status" id="status">Camera off. Needs HTTPS and camera permission.</div>
+  </section>
+
+  <section>
+    <div class="verdict">
+      <h2>Flicker at f</h2>
+      <span class="pill bad" id="pill">Waiting</span>
+    </div>
+    <div class="figure" id="step">–<small> levels step</small></div>
+    <dl class="kv">
+      <dt>Signal-to-noise</dt><dd id="snr">–</dd>
+      <dt>Strongest channel</dt><dd id="best">–</dd>
+      <dt>Camera frame rate</dt><dd id="fps">–</dd>
+    </dl>
+    <table>
+      <thead><tr><th>Channel</th><th>Mean</th><th>Step</th><th>SNR</th></tr></thead>
+      <tbody>
+        <tr><td><span class="sw" style="background:var(--r)"></span>R</td><td id="mR">–</td><td id="sR">–</td><td id="nR">–</td></tr>
+        <tr><td><span class="sw" style="background:var(--g)"></span>G</td><td id="mG">–</td><td id="sG">–</td><td id="nG">–</td></tr>
+        <tr><td><span class="sw" style="background:var(--b)"></span>B</td><td id="mB">–</td><td id="sB">–</td><td id="nB">–</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Spectrum (strongest channel)</h2>
+    <canvas id="spec" aria-label="Amplitude by frequency"></canvas>
+  </section>
+
+  <section>
+    <h2>Step size, last 30 s</h2>
+    <canvas id="hist" aria-label="Step size over time"></canvas>
+    <p class="status">Change v on the laptop and watch this line. In the null test, the lowest point is the match.</p>
+  </section>
+
+  <section>
+    <h2>Camera controls</h2>
+    <dl class="kv" id="caps"><dt>Status</dt><dd>Start the camera to read its controls.</dd></dl>
+    <div class="actions">
+      <button id="lock" type="button" disabled>Lock exposure, focus and white balance</button>
+    </div>
+    <div class="status" id="lockMsg"></div>
+  </section>
+
+  <section>
+    <h2>Results</h2>
+    <div class="actions">
+      <button id="copy" type="button">Copy results</button>
+    </div>
+    <textarea id="out" rows="6" readonly hidden style="width:100%;font:12px var(--mono);color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:8px;padding:8px"></textarea>
+    <div class="status" id="copyMsg">Copies frame rate, camera controls and the current readings as text.</div>
+    <video id="vid" playsinline muted autoplay></video>
+  </section>
+</main>
+
+<script src="analysis.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const video = $('vid');
+const grab = document.createElement('canvas'); grab.width = 64; grab.height = 48;
+const gctx = grab.getContext('2d', { willReadFrequently: true });
+let stream = null, track = null, wake = null, buf = [], hist = [], last = null, timer = null, lastMediaTime = -1;
+
+function setStatus(t, err) { $('status').textContent = t; $('status').className = 'status' + (err ? ' err' : ''); }
+
+async function start() {
+  stop();
+  if (!navigator.mediaDevices?.getUserMedia) { setStatus('This browser does not allow camera access here. Open the page over HTTPS in Safari.', true); return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
+      facingMode: $('facing').value, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } } });
+  } catch (e) { setStatus('Camera not available: ' + (e.message || e.name) + '. Allow camera access and try again.', true); return; }
+  video.srcObject = stream; await video.play().catch(() => {});
+  track = stream.getVideoTracks()[0];
+  buf = []; hist = [];
+  setStatus('Camera on. Press it flat on the patch and start the flicker on the laptop.');
+  $('start').textContent = 'Restart camera'; $('lock').disabled = false;
+  readCaps();
+  if ('requestVideoFrameCallback' in video) video.requestVideoFrameCallback(onFrame); else requestAnimationFrame(onRaf);
+  timer = setInterval(update, 250);
+  try { wake = await navigator.wakeLock?.request('screen'); } catch (e) {}
+}
+function stop() {
+  clearInterval(timer);
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; track = null;
+}
+
+function sample(ts) {
+  gctx.drawImage(video, 0, 0, 64, 48);
+  const d = gctx.getImageData(13, 10, 38, 28).data; // centre 60% of the frame
+  let r = 0, g = 0, b = 0; const n = d.length / 4;
+  for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+  buf.push({ t: ts, r: r / n, g: g / n, b: b / n });
+  while (buf.length && buf[0].t < ts - 10) buf.shift();
+}
+function onFrame(now, meta) {
+  if (!stream) return;
+  const ts = meta && meta.captureTime != null ? meta.captureTime / 1000 : meta && meta.mediaTime != null ? meta.mediaTime : now / 1000;
+  sample(ts);
+  video.requestVideoFrameCallback(onFrame);
+}
+function onRaf(now) {
+  if (!stream) return;
+  if (video.currentTime !== lastMediaTime) { lastMediaTime = video.currentTime; sample(now / 1000); }
+  requestAnimationFrame(onRaf);
+}
+
+function windowed() {
+  if (buf.length < 20) return null;
+  const tEnd = buf[buf.length - 1].t, w = +$('win').value;
+  const s = buf.filter(p => p.t >= tEnd - w);
+  if (s.length < 20) return null;
+  const t0 = s[0].t, t = s.map(p => p.t - t0);
+  const fps = (s.length - 1) / (t[t.length - 1] || 1);
+  return { t, fps, r: s.map(p => p.r), g: s.map(p => p.g), b: s.map(p => p.b) };
+}
+
+const fmt = (x, d = 2) => Number.isFinite(x) ? x.toFixed(d) : '–';
+function update() {
+  const w = windowed(); if (!w) return;
+  const f = +$('f').value || 6;
+  const res = {}; let best = 'r';
+  for (const c of ['r', 'g', 'b']) { res[c] = Flicker.analyze(w.t, w[c], f, w.fps); if (res[c].a > res[best].a) best = c; }
+  const top = res[best];
+  last = { f, fps: w.fps, res, best, mean: { r: avg(w.r), g: avg(w.g), b: avg(w.b) } };
+
+  $('step').innerHTML = fmt(top.step, 3) + '<small> levels step</small>';
+  $('snr').textContent = fmt(top.snr, 1);
+  $('best').textContent = best.toUpperCase();
+  $('fps').textContent = fmt(w.fps, 1) + ' fps';
+  for (const c of ['r', 'g', 'b']) {
+    const C = c.toUpperCase();
+    $('m' + C).textContent = fmt(last.mean[c], 1);
+    $('s' + C).textContent = fmt(res[c].step, 3);
+    $('n' + C).textContent = fmt(res[c].snr, 1);
+  }
+  const pill = $('pill');
+  if (top.snr >= 4) { pill.textContent = 'Flicker detected'; pill.className = 'pill good'; }
+  else if (top.snr >= 2) { pill.textContent = 'Weak'; pill.className = 'pill mid'; }
+  else { pill.textContent = 'No flicker (null)'; pill.className = 'pill bad'; }
+
+  hist.push({ t: performance.now() / 1000, v: top.step, n: top.noise * Math.PI / 2 });
+  while (hist.length && hist[0].t < hist[hist.length - 1].t - 30) hist.shift();
+  drawSpec(top.spec, f); drawHist();
+}
+const avg = a => a.reduce((s, x) => s + x, 0) / a.length;
+
+function tok(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function prep(cv) {
+  const r = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== Math.round(W * r)) { cv.width = Math.round(W * r); cv.height = Math.round(H * r); }
+  const g = cv.getContext('2d'); g.setTransform(r, 0, 0, r, 0, 0); g.clearRect(0, 0, W, H); return { g, W, H };
+}
+function drawSpec(spec, f) {
+  const { g, W, H } = prep($('spec'));
+  const pad = { l: 4, r: 4, t: 8, b: 18 };
+  const max = Math.max(...spec.as, 1e-6);
+  const lo = spec.fs[0], hi = spec.fs[spec.fs.length - 1];
+  const X = v => pad.l + (v - lo) / (hi - lo) * (W - pad.l - pad.r);
+  const bw = Math.max(1, (W - pad.l - pad.r) / spec.fs.length - 1);
+  spec.fs.forEach((fr, i) => {
+    const h = spec.as[i] / max * (H - pad.t - pad.b);
+    g.fillStyle = Math.abs(fr - f) < 0.2 ? tok('--accent') : tok('--line');
+    g.fillRect(X(fr) - bw / 2, H - pad.b - h, bw, h);
+  });
+  g.fillStyle = tok('--muted'); g.font = '11px ' + tok('--mono'); g.textAlign = 'center';
+  for (let v = Math.ceil(lo); v <= hi; v += 2) g.fillText(v + ' Hz', Math.min(Math.max(X(v), 18), W - 18), H - 4);
+}
+function drawHist() {
+  const { g, W, H } = prep($('hist'));
+  if (hist.length < 2) return;
+  const t1 = hist[hist.length - 1].t, max = Math.max(...hist.map(h => Math.max(h.v, h.n)), 0.05);
+  const X = t => W - (t1 - t) / 30 * W, Y = v => H - 16 - v / max * (H - 28);
+  g.strokeStyle = tok('--line'); g.setLineDash([3, 3]); g.beginPath();
+  hist.forEach((h, i) => i ? g.lineTo(X(h.t), Y(h.n)) : g.moveTo(X(h.t), Y(h.n))); g.stroke(); g.setLineDash([]);
+  g.strokeStyle = tok('--accent'); g.lineWidth = 2; g.beginPath();
+  hist.forEach((h, i) => i ? g.lineTo(X(h.t), Y(h.v)) : g.moveTo(X(h.t), Y(h.v))); g.stroke();
+  const e = hist[hist.length - 1];
+  g.fillStyle = tok('--accent'); g.beginPath(); g.arc(X(e.t) - 3, Y(e.v), 3.5, 0, 7); g.fill();
+  g.fillStyle = tok('--muted'); g.font = '11px ' + tok('--mono'); g.textAlign = 'left';
+  g.fillText('max ' + max.toFixed(2) + ' levels · dashed = noise', 2, 11);
+}
+
+function readCaps() {
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+  const set = track.getSettings ? track.getSettings() : {};
+  const rows = [
+    ['Resolution', (set.width || '?') + '×' + (set.height || '?')],
+    ['Frame rate', set.frameRate ? set.frameRate.toFixed(0) + ' fps' : 'unknown'],
+    ['Exposure modes', (caps.exposureMode || []).join(', ') || 'not exposed'],
+    ['Exposure now', set.exposureMode || '–'],
+    ['White balance modes', (caps.whiteBalanceMode || []).join(', ') || 'not exposed'],
+    ['White balance now', set.whiteBalanceMode || '–'],
+    ['Focus modes', (caps.focusMode || []).join(', ') || 'not exposed'],
+    ['Focus now', set.focusMode || '–'],
+  ];
+  $('caps').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  return { caps: { exposureMode: caps.exposureMode, whiteBalanceMode: caps.whiteBalanceMode, focusMode: caps.focusMode }, settings: set };
+}
+
+async function lock() {
+  if (!track) return;
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+  const pick = (list, prefs) => (list || []).find(m => prefs.includes(m));
+  const tries = [['exposureMode', pick(caps.exposureMode, ['manual', 'none'])],
+                 ['whiteBalanceMode', pick(caps.whiteBalanceMode, ['manual', 'none'])],
+                 ['focusMode', pick(caps.focusMode, ['manual', 'none'])]];
+  const msg = [];
+  for (const [k, v] of tries) {
+    if (!v) { msg.push(k + ': no lock mode offered'); continue; }
+    try { await track.applyConstraints({ advanced: [{ [k]: v }] }); msg.push(k + ' → ' + (track.getSettings()[k] || v)); }
+    catch (e) { msg.push(k + ': refused (' + (e.name || 'error') + ')'); }
+  }
+  $('lockMsg').textContent = msg.join(' · ');
+  readCaps();
+}
+
+$('find').onclick = () => {
+  const w = windowed(); if (!w) return;
+  const sum = w.t.map((_, i) => w.r[i] + w.g[i] + w.b[i]);
+  const p = Flicker.findPeak(w.t, Flicker.detrend(w.t, sum), w.fps);
+  $('f').value = p.f;
+};
+$('start').onclick = start;
+$('facing').onchange = () => { if (stream) start(); };
+$('lock').onclick = lock;
+$('copy').onclick = async () => {
+  const c = track ? readCaps() : {};
+  const r = last ? Object.fromEntries(['r', 'g', 'b'].map(k => [k, { step: +last.res[k].step.toFixed(4), snr: +last.res[k].snr.toFixed(2), mean: +last.mean[k].toFixed(2) }])) : null;
+  const text = JSON.stringify({ when: new Date().toISOString(), ua: navigator.userAgent, facing: $('facing').value,
+    f: last?.f, fps: last ? +last.fps.toFixed(1) : null, window_s: +$('win').value, readings: r, camera: c }, null, 1);
+  const out = $('out'); out.value = text; out.hidden = false;
+  try { await navigator.clipboard.writeText(text); $('copyMsg').textContent = 'Copied. Paste it into the chat with the laptop settings you used.'; }
+  catch (e) { out.select(); $('copyMsg').textContent = 'Copy was blocked. The text is selected above; copy it by hand.'; }
+};
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && stream) { try { wake = await navigator.wakeLock?.request('screen'); } catch (e) {} }
+});
+</script>
+</body>
+</html>
