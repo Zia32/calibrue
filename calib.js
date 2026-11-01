@@ -159,6 +159,35 @@
     return h ? Math.log(0.5) / Math.log(h.v / 255) : NaN;
   }
 
-  const api = { fitNull, findNull, fractionAt, PLAN, measureCurve, smoothModel, curveF, curveV, ramp, gammaHalf };
+
+  // Shift a channel's whole curve by d in gamma (each point keeps its light level, its code
+  // moves). Used to anchor the per-channel shape to the grey null, which is what greys show.
+  function shiftGamma(pts, d) {
+    return pts.map(p => {
+      if (!(p.F > 0 && p.F < 1 && p.v > 0 && p.v < 255)) return { ...p };
+      const g = Math.log(p.F) / Math.log(p.v / 255) + d;
+      return { ...p, v: 255 * p.F ** (1 / g) };
+    });
+  }
+
+  // After installing a profile, the grey null showed effective gamma gAfter. Feed each input
+  // through x → x^(target/gAfter) before the old ramp, so the screen lands on the target.
+  function refineRamps(ramps, gAfter, target = 2.2) {
+    const out = {};
+    for (const c of ['red', 'green', 'blue']) {
+      const r = ramps[c], e = target / gAfter, arr = new Array(256);
+      let prev = 0;
+      for (let i = 0; i < 256; i++) {
+        const u = i === 0 ? 0 : i === 255 ? 255 : 255 * (i / 255) ** e;
+        const j = Math.floor(u), f = u - j;
+        const val = j >= 255 ? r[255] : r[j] * (1 - f) + r[j + 1] * f;
+        prev = Math.max(prev, Math.round(val)); arr[i] = prev;
+      }
+      out[c] = arr;
+    }
+    return out;
+  }
+
+  const api = { shiftGamma, refineRamps, fitNull, findNull, fractionAt, PLAN, measureCurve, smoothModel, curveF, curveV, ramp, gammaHalf };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Calib = api;
 })(typeof window !== 'undefined' ? window : globalThis);

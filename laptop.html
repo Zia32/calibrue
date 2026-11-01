@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.01-9">
+<meta name="calibrue-build" content="2026.11.02-1">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Laptop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -44,6 +44,17 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
 .code{font-family:var(--mono);font-size:20px;font-weight:600;letter-spacing:.12em}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px;vertical-align:1px}
 .dot.on{background:#2fa35f}
+.prog{font-size:13px;border-left:3px solid var(--accent);padding:4px 0 4px 10px}
+#done{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:32px 16px;z-index:5}
+#done .card{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:12px;max-width:560px;width:100%;padding:22px;display:flex;flex-direction:column;gap:14px;font-size:14px;line-height:1.5}
+#done h2{margin:0;font-size:20px}
+#done ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:5px}
+#done .big{font-size:24px}
+#done .big small{font-size:13px;font-weight:400;color:var(--muted)}
+#done textarea{width:100%;min-height:80px;font:12px/1.4 var(--mono);color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:6px;padding:6px;box-sizing:border-box}
+#done details summary{cursor:pointer;color:var(--muted)}
+.dlrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+button.dl{font-size:15px;padding:10px 14px}
 .plink{font-weight:600;color:var(--accent);text-decoration:none;font-size:13px}
 .plink:hover,.plink:focus-visible{text-decoration:underline}
 </style>
@@ -116,7 +127,9 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
     <dt>Calibration</dt><dd id="rC">none yet</dd>
   </dl>
 
-  <a class="plink" href="profile.html">Create Windows profile →</a>
+  <div class="prog" id="prog" hidden></div>
+  <a class="plink" href="#" id="showDone" hidden>Show profile download →</a>
+  <a class="plink" href="profile.html">Profile details and EDID →</a>
 
   <div class="note">
     <kbd>←</kbd><kbd>→</kbd> v ±1 · <kbd>Shift</kbd> ±8 · <kbd>Space</kbd> start/pause · <kbd>H</kbd> panel · <kbd>F</kbd> fullscreen<br><br>
@@ -125,9 +138,38 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
   </div>
 </div>
 
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.01-9"></script>
-<script src="lib/qrcode-1.0.0.min.js?v=2026.11.01-9"></script>
-<script src="link.js?v=2026.11.01-9"></script>
+
+<div id="done" hidden>
+  <div class="card">
+    <h2 id="dTitle">Profile ready</h2>
+    <div class="big" id="dGamma"></div>
+    <p class="sub" id="dNote" style="margin:0"></p>
+    <div class="dlrow"><button class="primary dl" id="dDl" type="button">Download profile</button><span class="sub" id="dFile"></span></div>
+    <details id="dEdid">
+      <summary>Optional: add your screen's colours (for Photoshop, Lightroom, browsers)</summary>
+      <p class="sub">Paste the four Chromaticity lines from HWiNFO (Monitor → your laptop screen), or the output of the command on the <a href="profile.html">profile page</a>. Without them the profile assumes standard sRGB.</p>
+      <textarea id="dEdidIn" spellcheck="false" placeholder="Red [x,y]: 0.6602, 0.3291&#10;Green [x,y]: 0.2861, 0.6240&#10;Blue [x,y]: 0.1445, 0.0576&#10;White [x,y]: 0.3135, 0.3291"></textarea>
+      <p class="sub" id="dEdidOut"></p>
+    </details>
+    <div>
+      <b>Install (about 1 minute)</b>
+      <ol>
+        <li>Press <kbd>Win</kbd> + <kbd>R</kbd>, type <b>colorcpl</b>, Enter.</li>
+        <li><b>Devices</b> tab: tick <b>Use my settings for this device</b>. Remove any older Calibrue profile.</li>
+        <li><b>Add…</b> → <b>Browse…</b> → pick <span id="dFile2"></span> → Add → <b>Set as Default Profile</b>.</li>
+        <li><b>Advanced</b> tab → <b>Change system defaults…</b> → <b>Advanced</b> → tick <b>Use Windows display calibration</b> → Close.</li>
+        <li>Restart the browser, open this page again and pair. Then tap <b>Verify</b> on the iPhone.</li>
+      </ol>
+    </div>
+    <div class="dlrow"><button id="dClose" type="button">Close</button></div>
+  </div>
+</div>
+
+<script src="calib.js?v=2026.11.02-1"></script>
+<script src="icc.js?v=2026.11.02-1"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-1"></script>
+<script src="lib/qrcode-1.0.0.min.js?v=2026.11.02-1"></script>
+<script src="link.js?v=2026.11.02-1"></script>
 <script>
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d', { alpha: false });
@@ -238,11 +280,20 @@ function showCal(c) {
 let calibration = null;
 try { calibration = JSON.parse(localStorage.getItem('calibrue.calibration') || 'null'); } catch (e) {}
 showCal(calibration);
+function saveCal(c) { calibration = c; showCal(c); try { localStorage.setItem('calibrue.calibration', JSON.stringify(c)); } catch (e) {} }
 function onMsg(m) {
-  if (m && m.type === 'calibration') { // tone curves + correction ramps from the phone; M4 turns these into a profile
-    calibration = m; showCal(m);
-    try { localStorage.setItem('calibrue.calibration', JSON.stringify(m)); } catch (e) {}
+  if (m && m.type === 'progress') { $('prog').hidden = false; $('prog').textContent = m.text; return; }
+  if (m && m.type === 'calibration') { // finished measurement from the phone: save it and offer the profile
+    if (!(calibration && calibration.when === m.when)) { saveCal(m); showDone('new'); }
     send({ type: 'calibration-saved' });
+    return;
+  }
+  if (m && m.type === 'refine' && calibration && Number.isFinite(m.gAfter)) { // verification was off target
+    if (calibration.refinedFrom !== m.gAfter) {
+      const r = { ...calibration, ramps: Calib.refineRamps(calibration.ramps, m.gAfter), refinedFrom: m.gAfter, when: new Date().toISOString(), refinements: (calibration.refinements || 0) + 1 };
+      saveCal(r); showDone('refined');
+    }
+    send({ type: 'refined' });
     return;
   }
   if (!m || m.type !== 'set') return;
@@ -288,6 +339,47 @@ link = CalLink.open(code, 'laptop', {
   onStatus: s => { relays = s; updatePair(); },
 });
 setInterval(() => { updatePair(); if (Date.now() - lastSeen < 12000) send(stateMsg()); }, 3000); // heartbeat while the phone is here
+
+// ---- Profile ready panel ----
+const dayOf = w => new Date(w).toISOString().slice(0, 10);
+const profName = () => `calibrue-${dayOf(calibration.when)}${calibration.refinements ? '-r' + calibration.refinements : ''}.icc`;
+let edidPrimaries = null;
+function readEdid() {
+  const raw = $('dEdidIn').value.trim();
+  const p = raw ? ICC.parseEdid(raw) : null;
+  edidPrimaries = p ? { red: p.red, green: p.green, blue: p.blue, white: p.white } : null;
+  if (!raw) $('dEdidOut').textContent = 'Using standard sRGB.';
+  else if (!p) $('dEdidOut').textContent = 'These values do not describe a normal screen, so the profile uses standard sRGB.';
+  else { const g = ICC.gamutSize(p); $('dEdidOut').textContent = `Read. ${Math.round(g.vsSrgb * 100)}% of sRGB size, ${Math.round(g.vsP3 * 100)}% of P3. Used in the profile.`; }
+  try { localStorage.setItem('calibrue.edid', raw); } catch (e) {}
+}
+function showDone(kind) {
+  if (!calibration || !calibration.ramps) return;
+  $('dTitle').textContent = kind === 'refined' ? 'Refined profile ready' : 'Profile ready';
+  const from = calibration.refinedFrom ? calibration.refinedFrom : calibration.greyGamma;
+  $('dGamma').innerHTML = Number.isFinite(from) ? `${from.toFixed(2)} → 2.20<small> gamma ${kind === 'refined' ? 'measured with the old profile' : 'measured'} → target</small>` : '';
+  $('dNote').textContent = kind === 'refined'
+    ? 'Verification was slightly off, so this profile adds a small correction on top. Download it, remove the old Calibrue profile in colorcpl, add this one, then Verify again.'
+    : 'Your measurement is saved on this laptop. Download the profile and install it.';
+  $('dFile').textContent = profName(); $('dFile2').textContent = profName();
+  $('showDone').hidden = false; $('prog').hidden = true;
+  $('done').hidden = false;
+}
+$('dEdidIn').addEventListener('input', readEdid);
+try { const e = localStorage.getItem('calibrue.edid'); if (e) $('dEdidIn').value = e; } catch (e) {}
+readEdid();
+$('dDl').onclick = () => {
+  const bytes = ICC.build({ ramps: calibration.ramps, primaries: edidPrimaries || ICC.SRGB,
+    name: `Calibrue ${dayOf(calibration.when)} gamma 2.2${calibration.refinements ? ' r' + calibration.refinements : ''}`, copyright: 'Created with Calibrue (zia32.github.io/calibrue)' });
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.iccprofile' }));
+  const a = document.createElement('a'); a.href = url; a.download = profName(); document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  $('dFile').textContent = 'Downloaded ' + profName() + '. Now install it:';
+};
+$('dClose').onclick = () => { $('done').hidden = true; };
+$('showDone').onclick = e => { e.preventDefault(); showDone(calibration && calibration.refinements ? 'refined' : 'new'); };
+if (calibration && calibration.ramps) $('showDone').hidden = false;
+
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.run) keepAwake(); });
 
 function syncUI() {

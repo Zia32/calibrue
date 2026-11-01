@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.01-9">
+<meta name="calibrue-build" content="2026.11.02-1">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Calibrue · iPhone</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -55,6 +55,19 @@ canvas{width:100%;height:120px;display:block}
 progress{width:100%;height:8px;accent-color:var(--accent)}
 video{width:96px;height:72px;border-radius:6px;background:#000;object-fit:cover;align-self:flex-end}
 .actions{display:flex;gap:10px;flex-wrap:wrap}
+button.go{font-size:18px;padding:14px;border-radius:12px}
+.prep{margin:0;padding-left:20px;font-size:14px;display:flex;flex-direction:column;gap:3px}
+.stages{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.stages li{display:grid;grid-template-columns:20px 1fr auto;gap:8px;align-items:baseline;font-size:14px;color:var(--muted)}
+.stages li::before{content:"○";font-family:var(--mono);text-align:center}
+.stages li[data-s="active"]{color:var(--fg);font-weight:600}.stages li[data-s="active"]::before{content:"●";color:var(--accent)}
+.stages li[data-s="done"]{color:var(--fg)}.stages li[data-s="done"]::before{content:"✓";color:var(--good)}
+.stages li[data-s="fail"]{color:var(--r)}.stages li[data-s="fail"]::before{content:"✕"}
+.stages small{font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:400}
+details.adv{display:flex;flex-direction:column;gap:14px}
+details.adv>summary{cursor:pointer;font-size:13px;color:var(--muted);padding:6px 2px}
+details.adv[open]>summary{margin-bottom:14px}
+details.adv>section+section{margin-top:14px}
 </style>
 </head>
 <body>
@@ -73,6 +86,38 @@ video{width:96px;height:72px;border-radius:6px;background:#000;object-fit:cover;
     <dl class="kv"><dt>Laptop shows</dt><dd id="lapState">–</dd></dl>
   </section>
 
+
+  <section id="flow">
+    <h2>Calibrate this laptop</h2>
+    <ol class="prep">
+      <li>Laptop on the charger, room dimmed.</li>
+      <li>Windows: Settings → Display → Brightness → <b>Change brightness based on content: Off</b>.</li>
+      <li>If a Calibrue profile is installed: <b>colorcpl</b> → Advanced → Change system defaults → <b>untick Use Windows display calibration</b>.</li>
+      <li>Rear camera flat on the laptop's centre square, this screen facing you. Keep still for about 12 minutes.</li>
+    </ol>
+    <button class="primary go" id="go" type="button" disabled>Calibrate</button>
+    <ul class="stages" id="stages">
+      <li data-k="signal">Signal check<small></small></li>
+      <li data-k="pattern">Pattern check<small></small></li>
+      <li data-k="red">Red curve<small></small></li>
+      <li data-k="green">Green curve<small></small></li>
+      <li data-k="blue">Blue curve<small></small></li>
+      <li data-k="finish">Build profile<small></small></li>
+    </ul>
+    <progress id="goProg" value="0" max="1" hidden></progress>
+    <div class="status" id="goMsg">Pair with the laptop above, then tap Calibrate.</div>
+    <div id="goResult" hidden>
+      <div class="figure" id="goBig"></div>
+      <p class="status" id="goNote"></p>
+    </div>
+    <div class="actions">
+      <button id="goStop" type="button" hidden>Stop</button>
+      <button id="verify" type="button" disabled>Verify an installed profile</button>
+    </div>
+  </section>
+
+  <details class="adv" id="adv">
+    <summary>Advanced tools and diagnostics</summary>
   <section>
     <div class="controls">
       <button class="primary full" id="start">Start camera</button>
@@ -164,6 +209,8 @@ video{width:96px;height:72px;border-radius:6px;background:#000;object-fit:cover;
     <div class="status" id="lockMsg"></div>
   </section>
 
+  </details>
+
   <section>
     <h2>Results</h2>
     <div class="actions">
@@ -175,10 +222,10 @@ video{width:96px;height:72px;border-radius:6px;background:#000;object-fit:cover;
   </section>
 </main>
 
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.01-9"></script>
-<script src="link.js?v=2026.11.01-9"></script>
-<script src="analysis.js?v=2026.11.01-9"></script>
-<script src="calib.js?v=2026.11.01-9"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-1"></script>
+<script src="link.js?v=2026.11.02-1"></script>
+<script src="analysis.js?v=2026.11.02-1"></script>
+<script src="calib.js?v=2026.11.02-1"></script>
 <script>
 const $ = id => document.getElementById(id);
 const video = $('vid');
@@ -399,7 +446,7 @@ function linkTick() {
 let tickN = 0; // hello every 1 s until the laptop answers, then a ping every 4 s
 setInterval(() => { if (!rl) return; tickN++; if (!paired || tickN % 4 === 0) rl.send({ type: paired ? 'ping' : 'hello' }); linkTick(); }, 1000);
 function onLapMsg(m) {
-  if (m && m.type === 'calibration-saved') { calSaved = true; return; }
+  if (m && (m.type === 'calibration-saved' || m.type === 'refined')) { calSaved = true; return; }
   if (!m || (m.type !== 'state' && m.type !== 'ack')) return;
   lap = m;
   const s = m.state, F = Number.isFinite(m.flicker) ? m.flicker.toFixed(2) + ' Hz' : '?';
@@ -423,8 +470,11 @@ function command(state) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function refreshAuto(msg = true) {
   const ready = !!link && !!stream && !auto;
-  $('autoNull').disabled = !ready; $('autoStep').disabled = !ready; $('autoPat').disabled = !ready; $('autoStop').hidden = !auto || auto.kind === 'cal';
+  $('autoNull').disabled = !ready; $('autoStep').disabled = !ready; $('autoPat').disabled = !ready; $('autoStop').hidden = !auto || !!auto.kind;
   $('calRun').disabled = !ready; $('calStop').hidden = !auto || auto.kind !== 'cal';
+  $('go').disabled = !link || !!auto; $('verify').disabled = !link || !!auto; $('goStop').hidden = !auto || auto.kind !== 'full';
+  $('go').textContent = auto && auto.kind === 'full' ? 'Calibrating…' : 'Calibrate';
+  if (!auto && msg && $('goMsg').textContent.startsWith('Pair')) $('goMsg').textContent = link ? 'Ready. Read the four points above, then tap Calibrate.' : 'Pair with the laptop above, then tap Calibrate.';
   if (!auto && msg) $('autoMsg').textContent = !link ? 'Pair with the laptop first.' : !stream ? 'Start the camera.' : 'Press the phone flat on the square, then pick a test.';
 }
 // Set the laptop, wait for the camera to settle, then measure the flicker in fresh frames only.
@@ -642,6 +692,138 @@ async function runPatterns() {
   showPat();
 }
 
+
+// ---- One-button calibration ----
+const STAGES = ['signal', 'pattern', 'red', 'green', 'blue', 'finish'];
+function setStage(k, state, note) {
+  const li = document.querySelector(`#stages li[data-k="${k}"]`); if (!li) return;
+  if (state) li.dataset.s = state;
+  if (note != null) li.querySelector('small').textContent = note;
+}
+function say(text) { $('goMsg').textContent = text; try { rl && rl.send({ type: 'progress', text }); } catch (e) {} }
+const savedPattern = () => { try { return localStorage.getItem('calibrue.pattern') || 'c1'; } catch (e) { return 'c1'; } };
+const patLabel = p => (PATTERNS.find(x => x[0] === p) || [p, p])[1];
+async function ensureCamera() {
+  if (!stream) await start();
+  if (!stream) throw new Error('The camera did not start. Allow camera access for this page and try again.');
+  for (let i = 0; i < 25 && buf.length < 30; i++) await sleep(200);
+}
+async function greyNull(pat, first = true) {
+  const r = await Calib.findNull(async v => {
+    const m = await measureAt({ mode: 'checker', ch: 'grey', lo: 0, hi: 255, ped: 0, pat, v, run: true }, first ? 2500 : 800, 2600);
+    first = false; return m;
+  }, 187, 2.2);
+  return { ...r, gamma: Math.log(0.5) / Math.log(r.v0 / 255) };
+}
+async function runFull() {
+  auto = { stop: false, kind: 'full' }; refreshAuto();
+  STAGES.forEach(k => setStage(k, 'pending', ''));
+  $('goResult').hidden = true;
+  const prog = $('goProg'); prog.hidden = false;
+  const total = 1 + PATTERNS.length + 3 * Calib.PLAN.length; let done = 0; const t0 = Date.now();
+  const tick = () => { prog.value = ++done / total; };
+  const left = () => done > 2 ? ` About ${Math.max(1, Math.round((Date.now() - t0) / done * (total - done) / 60000))} min left.` : '';
+  const report = { test: 'full', started: new Date().toISOString() };
+  let stage = 'signal';
+  try {
+    // 1. Signal: a 1-level step at mid grey must stand well clear of the noise.
+    setStage('signal', 'active'); say('Checking that the camera sees the screen. Keep the phone flat and still.');
+    await ensureCamera();
+    const sig = await measureAt({ mode: 'delta', ch: 'grey', v: 128, d: 1, ped: 0, pat: 'c1', run: true }, 2500, 3500);
+    report.signal = { snr: +sig.snr.toFixed(1) };
+    if (!(sig.snr >= 4)) throw new Error(`The camera can't see the screen clearly (signal ${sig.snr.toFixed(1)}, needs 4). Press the phone flat on the centre square, clean the camera lens, dim the room, and tap Calibrate again.`);
+    setStage('signal', 'done', `signal ${sig.snr.toFixed(0)}`); tick();
+
+    // 2. Patterns: grey null with each; trust the patterns that agree with each other.
+    stage = 'pattern'; setStage('pattern', 'active');
+    const pats = [];
+    for (const [i, [pat, label]] of PATTERNS.entries()) {
+      say(`Pattern check ${i + 1} of ${PATTERNS.length}: ${label}.${left()}`);
+      const r = await greyNull(pat); pats.push({ pat, label, v: r.v0, gamma: r.gamma }); tick();
+    }
+    const med = pats.map(p => p.v).sort((a, b) => a - b), median = (med[1] + med[2]) / 2;
+    const agree = pats.filter(p => Math.abs(p.v - median) <= 1);
+    const greyV = agree.reduce((s, p) => s + p.v, 0) / agree.length, greyGamma = Math.log(0.5) / Math.log(greyV / 255);
+    const c1 = pats.find(p => p.pat === 'c1');
+    const chosen = Math.abs(c1.v - greyV) <= 0.7 ? c1 : agree.reduce((b, p) => Math.abs(p.v - greyV) < Math.abs(b.v - greyV) ? p : b);
+    const spread = med[3] - med[0];
+    report.patterns = { rows: pats.map(p => ({ pattern: p.label, v: +p.v.toFixed(2), gamma: +p.gamma.toFixed(3) })), spread: +spread.toFixed(2), chosen: chosen.label, greyGamma: +greyGamma.toFixed(3) };
+    try { localStorage.setItem('calibrue.pattern', chosen.pat); } catch (e) {}
+    setStage('pattern', 'done', `grey ${greyGamma.toFixed(2)} · ${chosen.label}`);
+
+    // 3. Curves per channel with the chosen pattern.
+    const curves = {};
+    for (const [ch, key] of [['red', 'r'], ['green', 'g'], ['blue', 'b']]) {
+      stage = ch; setStage(ch, 'active');
+      curves[ch] = await Calib.measureCurve(
+        (a, b, p, g) => { let first = true;
+          return Calib.findNull(async v => {
+            const m = await measureAt({ mode: 'checker', ch, lo: a, hi: b, v, ped: CAL_PED, pat: chosen.pat, run: true }, first ? 2500 : 800, 2600, key);
+            first = false; return m; }, p, g); },
+        st => { if (st.i > 0) tick(); say(`${ch[0].toUpperCase() + ch.slice(1)} ${st.i + 1} of ${st.n}.${left()} Keep still.`); });
+      tick();
+      setStage(ch, 'done', 'gamma ' + Calib.gammaHalf(curves[ch]).toFixed(2));
+    }
+
+    // 4. Anchor the channel curves to the grey result, build ramps, hand over to the laptop.
+    stage = 'finish'; setStage('finish', 'active'); say('Building the profile…');
+    const raw = Object.fromEntries(['red', 'green', 'blue'].map(c => [c, Calib.gammaHalf(curves[c])]));
+    const shift = greyGamma - (raw.red + raw.green + raw.blue) / 3;
+    const anchored = Object.fromEntries(['red', 'green', 'blue'].map(c => [c, Calib.shiftGamma(curves[c], shift)]));
+    const ramps = Object.fromEntries(['red', 'green', 'blue'].map(c => [c, Calib.ramp(anchored[c])]));
+    const gamma = Object.fromEntries(['red', 'green', 'blue'].map(c => [c, +Calib.gammaHalf(anchored[c]).toFixed(3)]));
+    const slim = c => anchored[c].map(p => ({ F: +p.F.toFixed(5), v: +p.v.toFixed(2) }));
+    Object.assign(report, { minutes: +((Date.now() - t0) / 60000).toFixed(1), rawGamma: Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, +v.toFixed(3)])), anchorShift: +shift.toFixed(3), gamma, curves: { red: slim('red'), green: slim('green'), blue: slim('blue') } });
+    lastAuto = report;
+    calSaved = false;
+    const msg = { type: 'calibration', when: new Date().toISOString(), gamma, greyGamma: +greyGamma.toFixed(3), pattern: chosen.pat, anchorShift: +shift.toFixed(3), curves: report.curves, ramps };
+    for (let i = 0; i < 6 && !calSaved; i++) { rl && rl.send(msg); await sleep(1500); }
+    try { await command({ run: false, ped: 0, pat: 'c1' }); } catch (e) {}
+    setStage('finish', calSaved ? 'done' : 'fail', calSaved ? 'saved on laptop' : 'laptop did not confirm');
+    prog.value = 1;
+    $('goResult').hidden = false;
+    $('goBig').innerHTML = `${greyGamma.toFixed(2)} → 2.20<small> gamma, now → after the profile</small>`;
+    $('goNote').textContent = calSaved
+      ? 'Done. On the laptop: Download profile and install it (steps are shown there). Then tap Verify here.'
+      : 'Measured, but the laptop did not confirm it received the result. Check the laptop page is open and tap Calibrate again.';
+    say(calSaved ? 'Done. Install the profile on the laptop, then tap Verify.' : 'The laptop did not confirm.');
+  } catch (e) {
+    setStage(stage, 'fail');
+    say(e.message);
+    try { await command({ run: false, ped: 0, pat: 'c1' }); } catch (x) {}
+  }
+  auto = null; refreshAuto(false);
+}
+async function runVerify() {
+  auto = { stop: false, kind: 'full' }; refreshAuto();
+  $('goProg').hidden = true;
+  try {
+    await ensureCamera();
+    const pat = savedPattern();
+    say(`Verifying with the ${patLabel(pat)} (about 30 s). Keep the phone flat and still.`);
+    const r = await greyNull(pat);
+    try { await command({ run: false, pat: 'c1' }); } catch (e) {}
+    lastAuto = { test: 'verify', pattern: patLabel(pat), v: +r.v0.toFixed(2), gamma: +r.gamma.toFixed(3) };
+    $('goResult').hidden = false;
+    $('goBig').innerHTML = `${r.gamma.toFixed(2)}<small> gamma with the profile (target 2.20)</small>`;
+    if (Math.abs(r.gamma - 2.2) <= 0.03) {
+      $('goNote').textContent = 'On target. Your screen is calibrated.';
+      say('Verified: on target.');
+    } else {
+      calSaved = false; // reused as "laptop confirmed the refinement"
+      for (let i = 0; i < 6 && !calSaved; i++) { rl && rl.send({ type: 'refine', gAfter: r.gamma }); await sleep(1500); }
+      $('goNote').textContent = calSaved
+        ? `Off by ${(r.gamma - 2.2).toFixed(2)}. The laptop made a refined profile: download it there, replace the old one in colorcpl, then tap Verify again.`
+        : `Off by ${(r.gamma - 2.2).toFixed(2)}, and the laptop did not answer. Check its page is open and tap Verify again.`;
+      say(calSaved ? 'Refined profile ready on the laptop.' : 'The laptop did not answer.');
+    }
+  } catch (e) { say(e.message); }
+  auto = null; refreshAuto(false);
+}
+
+$('go').onclick = runFull;
+$('verify').onclick = runVerify;
+$('goStop').onclick = () => { if (auto) auto.stop = true; };
 $('autoNull').onclick = () => runAuto('null');
 $('autoPat').onclick = runPatterns;
 $('autoStep').onclick = () => runAuto('step');
