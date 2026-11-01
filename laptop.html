@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.01-4">
+<meta name="calibrue-build" content="2026.11.01-5">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Laptop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -44,6 +44,8 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
 .code{font-family:var(--mono);font-size:20px;font-weight:600;letter-spacing:.12em}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px;vertical-align:1px}
 .dot.on{background:#2fa35f}
+.plink{font-weight:600;color:var(--accent);text-decoration:none;font-size:13px}
+.plink:hover,.plink:focus-visible{text-decoration:underline}
 </style>
 </head>
 <body>
@@ -114,6 +116,8 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
     <dt>Calibration</dt><dd id="rC">none yet</dd>
   </dl>
 
+  <a class="plink" href="profile.html">Create Windows profile →</a>
+
   <div class="note">
     <kbd>←</kbd><kbd>→</kbd> v ±1 · <kbd>Shift</kbd> ±8 · <kbd>Space</kbd> start/pause · <kbd>H</kbd> panel · <kbd>F</kbd> fullscreen<br><br>
     Before testing: turn off Night light and adaptive brightness, and remove any custom colour profile (it changes the patch values).<br><br>
@@ -121,9 +125,9 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
   </div>
 </div>
 
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.01-4"></script>
-<script src="lib/qrcode-1.0.0.min.js?v=2026.11.01-4"></script>
-<script src="link.js?v=2026.11.01-4"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.01-5"></script>
+<script src="lib/qrcode-1.0.0.min.js?v=2026.11.01-5"></script>
+<script src="link.js?v=2026.11.01-5"></script>
 <script>
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d', { alpha: false });

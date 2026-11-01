@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="calibrue-build" content="2026.11.01-5">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Calibrue · Profile</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column of numbered steps, measure → colours → preview → download → install → verify. */
+:root{
+  --bg:#f3f5f6; --card:#ffffff; --fg:#121619; --muted:#56616a; --line:#d3d9dd; --accent:#1f6bd6; --warn:#a2541c; --good:#1c7c46;
+  --r:#c8382f; --g:#2a8a3e; --b:#2d62c9;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1214;--card:#171b1e;--fg:#e7ebee;--muted:#97a2aa;--line:#2a3135;--accent:#6aa1f4;--warn:#f0a26a;--good:#4cc283;--r:#f07068;--g:#5fcf77;--b:#79a3f5;color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--sans);padding:32px max(16px,env(safe-area-inset-right)) 48px max(16px,env(safe-area-inset-left))}
+main{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-direction:column;gap:4px}
+h1{margin:0;font-size:24px;text-wrap:balance}
+h2{margin:0;font-size:16px;display:flex;gap:10px;align-items:baseline}
+h2 .n{font-family:var(--mono);color:var(--muted);font-weight:600;font-size:13px}
+p{margin:0;max-width:66ch}
+.sub{color:var(--muted);font-size:13px}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;margin:0}
+.kv dt{color:var(--muted)} .kv dd{margin:0}
+.big{font-family:var(--mono);font-size:26px;font-weight:600;font-variant-numeric:tabular-nums}
+.big small{font-size:13px;font-weight:400;color:var(--muted)}
+button,a.btn{font:inherit;font-size:14px;font-weight:600;color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer;text-decoration:none;display:inline-block}
+button.primary,a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:disabled{opacity:.5;cursor:not-allowed}
+button:focus-visible,a.btn:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+pre{margin:0;padding:10px 12px;background:var(--bg);border:1px solid var(--line);border-radius:8px;font:12.5px/1.5 var(--mono);overflow-x:auto;white-space:pre}
+textarea{width:100%;min-height:96px;font:13px/1.5 var(--mono);color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:8px;padding:8px}
+.note{font-size:13px;color:var(--muted)}
+.warn{color:var(--warn)} .good{color:var(--good)}
+.previews{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:560px){.previews{grid-template-columns:1fr}}
+figure{margin:0;display:flex;flex-direction:column;gap:6px;min-width:0}
+figcaption{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600}
+canvas{width:100%;height:auto;display:block;border-radius:6px;background:#000}
+a{color:var(--accent)}
+ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px;max-width:66ch}
+kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:4px;padding:0 5px}
+table{border-collapse:collapse;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+th{font-family:var(--sans);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;text-align:right;padding:2px 0 4px 18px}
+th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:right;padding:3px 0 3px 18px;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Calibrue · Windows profile</h1>
+    <p class="sub">Turns the iPhone measurement into an .icc profile for this laptop. <span id="build"></span> <a href="laptop.html">Back to the laptop page</a></p>
+  </header>
+
+  <section>
+    <h2><span class="n">1</span>Measurement</h2>
+    <div id="noCal">
+      <p>No measurement on this laptop yet. Open the <a href="laptop.html">laptop page</a>, pair the iPhone, and run <b>Measure tone curves</b> on the phone. The result is saved here automatically.</p>
+    </div>
+    <div id="hasCal" hidden>
+      <div class="big" id="calGamma"></div>
+      <dl class="kv">
+        <dt>Measured</dt><dd id="calWhen"></dd>
+        <dt>Target</dt><dd>gamma 2.2, white point unchanged</dd>
+        <dt>Grey balance</dt><dd id="calBal"></dd>
+      </dl>
+      <table id="calTbl"><thead><tr><th>Input</th><th>R out</th><th>G out</th><th>B out</th></tr></thead><tbody></tbody></table>
+      <p class="note">The table shows what the correction does: each input level is sent to the screen as the output level, so that the screen lands on gamma 2.2.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">2</span>Display colours (optional)</h2>
+    <p>Colour-managed apps (Photoshop, Lightroom, Chrome, Edge) need to know your screen's red, green, blue and white. Without this step the profile assumes standard sRGB. To read your screen's factory values, open <b>PowerShell</b> (Start → type PowerShell), paste this command and press Enter:</p>
+    <pre id="psCmd">Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorColorCharacteristics | ForEach-Object { foreach ($c in 'Red','Green','Blue','DefaultWhite') { "$c $($_.$c.X) $($_.$c.Y)" } }</pre>
+    <div class="row"><button id="copyCmd" type="button">Copy command</button><span class="note" id="copyMsg"></span></div>
+    <label class="note" for="edidIn">Paste the four lines it prints here:</label>
+    <textarea id="edidIn" spellcheck="false" placeholder="Red 656 338&#10;Green 307 614&#10;Blue 154 61&#10;DefaultWhite 320 337"></textarea>
+    <div id="edidOut" class="note">Using standard sRGB until you paste values.</div>
+  </section>
+
+  <section>
+    <h2><span class="n">3</span>Preview</h2>
+    <p>The right side shows exactly what the profile will send to the screen. Compare the dark and middle greys.</p>
+    <div class="previews">
+      <figure><figcaption>Now</figcaption><canvas id="pvBefore" width="640" height="400" aria-label="Test image as the screen shows it now"></canvas></figure>
+      <figure><figcaption>After calibration</figcaption><canvas id="pvAfter" width="640" height="400" aria-label="Test image with the correction applied"></canvas></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">4</span>Download the profile</h2>
+    <div class="row"><button class="primary" id="dl" type="button" disabled>Download .icc profile</button><span class="note" id="dlName"></span></div>
+  </section>
+
+  <section>
+    <h2><span class="n">5</span>Install it in Windows (about 1 minute)</h2>
+    <ol>
+      <li>Press <kbd>Win</kbd> + <kbd>R</kbd>, type <b>colorcpl</b> and press Enter. Colour Management opens.</li>
+      <li><b>Devices</b> tab: check the Device is your laptop screen, then tick <b>Use my settings for this device</b>.</li>
+      <li>Click <b>Add…</b>, then <b>Browse…</b>, pick the downloaded <span class="mono" id="instName">.icc</span> file and click <b>Add</b>.</li>
+      <li>Select it in the list and click <b>Set as Default Profile</b>.</li>
+      <li><b>Advanced</b> tab → <b>Change system defaults…</b> → <b>Advanced</b> tab → tick <b>Use Windows display calibration</b> → Close.</li>
+      <li>The screen changes at once: mid greys get slightly brighter.</li>
+    </ol>
+    <p class="note">If nothing changes: turn off <b>Automatically manage colour for apps</b> and HDR in Settings → System → Display, then repeat step 5. To undo, remove the profile in the same Devices tab, or untick Use Windows display calibration.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">6</span>Check that it worked</h2>
+    <ol>
+      <li>Keep the profile on. Plug in the charger.</li>
+      <li>Open the <a href="laptop.html">laptop page</a> and pair the iPhone again.</li>
+      <li>On the phone, run <b>Find null point</b>.</li>
+      <li>Before calibration your screen nulled near v 190 (gamma 2.4). With the profile working it should land near <b>v 186 (gamma 2.2)</b>. Send me the result.</li>
+    </ol>
+  </section>
+</main>
+
+<script src="calib.js?v=2026.11.01-5"></script>
+<script src="icc.js?v=2026.11.01-5"></script>
+<script>
+const $ = id => document.getElementById(id);
+$('build').textContent = 'Version ' + document.querySelector('meta[name=calibrue-build]').content + '.';
+let cal = null, primaries = ICC.SRGB;
+try { cal = JSON.parse(localStorage.getItem('calibrue.calibration') || 'null'); } catch (e) {}
+const ok = cal && cal.ramps && ['red', 'green', 'blue'].every(c => Array.isArray(cal.ramps[c]) && cal.ramps[c].length === 256);
+
+const day = d => d.toISOString().slice(0, 10);
+const fileName = () => `calibrue-${day(new Date(cal.when))}.icc`;
+
+if (ok) {
+  $('noCal').hidden = true; $('hasCal').hidden = false;
+  const g = cal.gamma;
+  $('calGamma').innerHTML = `${g.red.toFixed(2)} · ${g.green.toFixed(2)} · ${g.blue.toFixed(2)}<small> measured gamma R · G · B</small>`;
+  $('calWhen').textContent = new Date(cal.when).toLocaleString();
+  // grey balance: largest R/G/B code difference at equal light, across the measured points
+  let spread = 0;
+  if (cal.curves && cal.curves.red) cal.curves.red.forEach((p, i) => {
+    const vs = ['red', 'green', 'blue'].map(c => cal.curves[c][i] && cal.curves[c][i].v).filter(Number.isFinite);
+    if (vs.length === 3) spread = Math.max(spread, Math.max(...vs) - Math.min(...vs));
+  });
+  $('calBal').textContent = spread < 2 ? `channels within ${spread.toFixed(1)} levels: no visible tint` : `channels differ by up to ${spread.toFixed(1)} levels: the profile corrects a tint`;
+  $('calTbl').tBodies[0].innerHTML = [32, 64, 96, 128, 160, 192, 224, 255].map(i =>
+    `<tr><td>${i}</td>${['red', 'green', 'blue'].map(c => `<td>${(cal.ramps[c][i] / 65535 * 255).toFixed(1)}</td>`).join('')}</tr>`).join('');
+  $('dl').disabled = false; $('dlName').textContent = fileName(); $('instName').textContent = fileName();
+}
+
+// ---- EDID ----
+$('copyCmd').onclick = async () => {
+  const t = $('psCmd').textContent;
+  try { await navigator.clipboard.writeText(t); $('copyMsg').textContent = 'Copied.'; }
+  catch (e) { const r = document.createRange(); r.selectNodeContents($('psCmd')); getSelection().removeAllRanges(); getSelection().addRange(r); $('copyMsg').textContent = 'Selected. Press Ctrl + C.'; }
+};
+function showEdid() {
+  const raw = $('edidIn').value.trim();
+  if (!raw) { primaries = ICC.SRGB; $('edidOut').className = 'note'; $('edidOut').textContent = 'Using standard sRGB until you paste values.'; return; }
+  const p = ICC.parseEdid(raw);
+  if (!p) { primaries = ICC.SRGB; $('edidOut').className = 'note warn'; $('edidOut').textContent = 'Could not read four values (Red, Green, Blue, DefaultWhite). Using standard sRGB.'; return; }
+  primaries = p;
+  const s = ICC.gamutSize(p), f = ([x, y]) => `x ${x.toFixed(4)} y ${y.toFixed(4)}`;
+  const generic = ICC.isSrgbLike(p);
+  $('edidOut').className = 'note ' + (generic ? 'warn' : 'good');
+  $('edidOut').innerHTML = `Red ${f(p.red)} · Green ${f(p.green)} · Blue ${f(p.blue)} · White ${f(p.white)}<br>`
+    + `Gamut size: ${Math.round(s.vsSrgb * 100)}% of sRGB, ${Math.round(s.vsP3 * 100)}% of P3. `
+    + (generic ? 'These are exactly the sRGB standard values, which manufacturers often store as a placeholder. Fine to use, but they may not describe this panel.' : 'Used in the profile.');
+  try { localStorage.setItem('calibrue.edid', raw); } catch (e) {}
+}
+$('edidIn').addEventListener('input', showEdid);
+try { const saved = localStorage.getItem('calibrue.edid'); if (saved) { $('edidIn').value = saved; } } catch (e) {}
+showEdid();
+
+// ---- Preview: the same test image, raw and through the correction ramps ----
+function scene(g, W, H) {
+  // grey step wedge, smooth gradient, three colour gradients
+  for (let i = 0; i < 16; i++) { const v = Math.round(i * 255 / 15); g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(i * W / 16, 0, W / 16 + 1, H * 0.3); }
+  const grad = (y, h, c) => { for (let x = 0; x < W; x++) { const v = Math.round(x / (W - 1) * 255); g.fillStyle = `rgb(${c[0] * v},${c[1] * v},${c[2] * v})`; g.fillRect(x, y, 1, h); } };
+  grad(H * 0.32, H * 0.2, [1, 1, 1]); grad(H * 0.54, H * 0.14, [1, 0, 0]); grad(H * 0.70, H * 0.14, [0, 1, 0]); grad(H * 0.86, H * 0.14, [0, 0, 1]);
+}
+function drawPreview() {
+  const a = $('pvBefore'), b = $('pvAfter'), W = a.width, H = a.height;
+  const ga = a.getContext('2d'); scene(ga, W, H);
+  const gb = b.getContext('2d'); gb.drawImage(a, 0, 0);
+  if (!ok) return;
+  const img = gb.getImageData(0, 0, W, H), d = img.data;
+  const lut = ['red', 'green', 'blue'].map(c => cal.ramps[c].map(x => Math.round(x / 65535 * 255)));
+  for (let i = 0; i < d.length; i += 4) { d[i] = lut[0][d[i]]; d[i + 1] = lut[1][d[i + 1]]; d[i + 2] = lut[2][d[i + 2]]; }
+  gb.putImageData(img, 0, 0);
+}
+drawPreview();
+
+// ---- Download ----
+$('dl').onclick = () => {
+  const bytes = ICC.build({ ramps: cal.ramps, primaries, name: `Calibrue ${day(new Date(cal.when))} gamma 2.2`,
+    copyright: 'Created with Calibrue (zia32.github.io/calibrue)' });
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.iccprofile' }));
+  const a = document.createElement('a'); a.href = url; a.download = fileName(); document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  $('dlName').textContent = `Downloaded ${fileName()}. Now install it (step 5).`;
+};
+</script>
+</body>
+</html>
