@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.01-6">
+<meta name="calibrue-build" content="2026.11.01-7">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Profile</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -126,8 +126,8 @@ th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:righ
   </section>
 </main>
 
-<script src="calib.js?v=2026.11.01-6"></script>
-<script src="icc.js?v=2026.11.01-6"></script>
+<script src="calib.js?v=2026.11.01-7"></script>
+<script src="icc.js?v=2026.11.01-7"></script>
 <script>
 const $ = id => document.getElementById(id);
 $('build').textContent = 'Version ' + document.querySelector('meta[name=calibrue-build]').content + '.';
@@ -165,8 +165,8 @@ function showEdid() {
   const raw = $('edidIn').value.trim();
   if (!raw) { primaries = ICC.SRGB; $('edidOut').className = 'note'; $('edidOut').textContent = 'Using standard sRGB until you paste values.'; return; }
   const p = ICC.parseEdid(raw);
-  if (!p) { primaries = ICC.SRGB; $('edidOut').className = 'note warn'; $('edidOut').textContent = 'Could not read four values (Red, Green, Blue, DefaultWhite). Using standard sRGB.'; return; }
-  primaries = p;
+  if (!p) { primaries = ICC.SRGB; $('edidOut').className = 'note warn'; $('edidOut').textContent = 'These values do not describe a normal screen (or one of the four lines is missing), so they are ignored. The profile uses standard sRGB.'; return; }
+  primaries = { red: p.red, green: p.green, blue: p.blue, white: p.white };
   const s = ICC.gamutSize(p), f = ([x, y]) => `x ${x.toFixed(4)} y ${y.toFixed(4)}`;
   const generic = ICC.isSrgbLike(p);
   $('edidOut').className = 'note ' + (generic ? 'warn' : 'good');

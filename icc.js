@@ -87,22 +87,38 @@
     return new Uint8Array(w.bytes);
   }
 
-  // EDID colour data as printed by the PowerShell command on the profile page:
-  // lines like "Red 656 338" (raw 10-bit values, /1024). Also accepts "x=0.6406 y=0.3301".
+  // EDID colour data as printed by the PowerShell command on the profile page: lines like
+  // "Red 169 84". Windows reports these as integers whose scale varies (seen: /256; EDID itself
+  // stores /1024), so pick the scale that puts the white point near daylight. Decimal input
+  // ("x=0.6406 y=0.3301", comma or point) is used as is. Returns null unless the result is a
+  // plausible display: red mostly red, green mostly green, blue mostly blue, white near D65.
   function parseEdid(textIn) {
-    const out = {};
+    const raw = {};
     for (const line of String(textIn).split(/\r?\n/)) {
       const m = line.match(/\b(Red|Green|Blue|DefaultWhite|White)\b\D*?([\d.,]+)\D+?([\d.,]+)/i);
       if (!m) continue;
-      let x = parseFloat(m[2].replace(',', '.')), y = parseFloat(m[3].replace(',', '.'));
-      if (x > 1 || y > 1) { x /= 1024; y /= 1024; }
       const k = m[1].toLowerCase().replace('defaultwhite', 'white');
-      out[k] = [x, y];
+      raw[k] = [parseFloat(m[2].replace(',', '.')), parseFloat(m[3].replace(',', '.'))];
     }
-    const ok = ['red', 'green', 'blue', 'white'].every(k => out[k] && out[k][0] > 0 && out[k][1] > 0 && out[k][0] + out[k][1] < 1);
-    return ok ? out : null;
+    if (!['red', 'green', 'blue', 'white'].every(k => raw[k] && raw[k].every(Number.isFinite))) return null;
+    const decimal = Object.values(raw).every(([x, y]) => x < 1 && y < 1);
+    const scales = decimal ? [1] : [256, 1024, 1000, 255];
+    for (const sc of scales) {
+      const p = {};
+      for (const k in raw) p[k] = [raw[k][0] / sc, raw[k][1] / sc];
+      if (plausible(p)) return { ...p, scale: sc };
+    }
+    return null;
   }
-  const isSrgbLike = p => ['red', 'green', 'blue', 'white'].every(k => Math.hypot(p[k][0] - SRGB[k][0], p[k][1] - SRGB[k][1]) < 0.004);
+  function plausible(p) {
+    const [wx, wy] = p.white;
+    return wx > 0.27 && wx < 0.36 && wy > 0.28 && wy < 0.38 &&
+      p.red[0] > 0.55 && p.red[1] > 0.25 && p.red[1] < 0.38 &&
+      p.green[1] > 0.5 && p.green[0] > 0.15 && p.green[0] < 0.4 &&
+      p.blue[1] < 0.2 && p.blue[0] > 0.1 && p.blue[0] < 0.2 &&
+      ['red', 'green', 'blue', 'white'].every(k => p[k][0] + p[k][1] < 1);
+  }
+  const isSrgbLike = p => ['red', 'green', 'blue', 'white'].every(k => Math.hypot(p[k][0] - SRGB[k][0], p[k][1] - SRGB[k][1]) < (p.scale === 256 ? 0.006 : 0.004));
 
   // Gamut area relative to sRGB and P3 in CIE 1976 u'v' (a common way to quote coverage size).
   const uv = ([x, y]) => { const d = -2 * x + 12 * y + 3; return [4 * x / d, 9 * y / d]; };
