@@ -83,7 +83,7 @@ video{width:96px;height:72px;border-radius:6px;background:#000;object-fit:cover;
       <h2>Flicker at f</h2>
       <span class="pill bad" id="pill">Waiting</span>
     </div>
-    <div class="figure" id="step">–<small> levels step</small></div>
+    <div class="figure" id="step">–<small> camera levels</small></div>
     <dl class="kv">
       <dt>Signal-to-noise</dt><dd id="snr">–</dd>
       <dt>Strongest channel</dt><dd id="best">–</dd>
@@ -136,7 +136,7 @@ const $ = id => document.getElementById(id);
 const video = $('vid');
 const grab = document.createElement('canvas'); grab.width = 64; grab.height = 48;
 const gctx = grab.getContext('2d', { willReadFrequently: true });
-let stream = null, track = null, wake = null, buf = [], hist = [], last = null, timer = null, lastMediaTime = -1;
+let stream = null, track = null, wake = null, buf = [], hist = [], last = null, timer = null, lastMediaTime = -1, gen = 0;
 
 function setStatus(t, err) { $('status').textContent = t; $('status').className = 'status' + (err ? ' err' : ''); }
 
@@ -153,7 +153,8 @@ async function start() {
   setStatus('Camera on. Press it flat on the patch and start the flicker on the laptop.');
   $('start').textContent = 'Restart camera'; $('lock').disabled = false;
   readCaps();
-  if ('requestVideoFrameCallback' in video) video.requestVideoFrameCallback(onFrame); else requestAnimationFrame(onRaf);
+  const g = ++gen; // one capture loop per camera start; older loops stop themselves
+  if ('requestVideoFrameCallback' in video) video.requestVideoFrameCallback((n, m) => onFrame(n, m, g)); else requestAnimationFrame(n => onRaf(n, g));
   timer = setInterval(update, 250);
   try { wake = await navigator.wakeLock?.request('screen'); } catch (e) {}
 }
@@ -164,6 +165,7 @@ function stop() {
 }
 
 function sample(ts) {
+  if (buf.length && ts <= buf[buf.length - 1].t) return; // same camera frame seen twice
   gctx.drawImage(video, 0, 0, 64, 48);
   const d = gctx.getImageData(13, 10, 38, 28).data; // centre 60% of the frame
   let r = 0, g = 0, b = 0; const n = d.length / 4;
@@ -171,16 +173,16 @@ function sample(ts) {
   buf.push({ t: ts, r: r / n, g: g / n, b: b / n });
   while (buf.length && buf[0].t < ts - 10) buf.shift();
 }
-function onFrame(now, meta) {
-  if (!stream) return;
+function onFrame(now, meta, g) {
+  if (!stream || g !== gen) return;
   const ts = meta && meta.captureTime != null ? meta.captureTime / 1000 : meta && meta.mediaTime != null ? meta.mediaTime : now / 1000;
   sample(ts);
-  video.requestVideoFrameCallback(onFrame);
+  video.requestVideoFrameCallback((n, m) => onFrame(n, m, g));
 }
-function onRaf(now) {
-  if (!stream) return;
+function onRaf(now, g) {
+  if (!stream || g !== gen) return;
   if (video.currentTime !== lastMediaTime) { lastMediaTime = video.currentTime; sample(now / 1000); }
-  requestAnimationFrame(onRaf);
+  requestAnimationFrame(n => onRaf(n, g));
 }
 
 function windowed() {
@@ -202,7 +204,7 @@ function update() {
   const top = res[best];
   last = { f, fps: w.fps, res, best, mean: { r: avg(w.r), g: avg(w.g), b: avg(w.b) } };
 
-  $('step').innerHTML = fmt(top.step, 3) + '<small> levels step</small>';
+  $('step').innerHTML = fmt(top.step, 3) + '<small> camera levels</small>';
   $('snr').textContent = fmt(top.snr, 1);
   $('best').textContent = best.toUpperCase();
   $('fps').textContent = fmt(w.fps, 1) + ' fps';
