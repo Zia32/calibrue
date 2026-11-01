@@ -429,20 +429,28 @@ function plotRows(rows, best) {
     g.fillStyle = tok('--accent'); g.fillText('v ' + best.toFixed(1), Math.min(Math.max(X(best), 24), W - 24), 10);
   }
 }
-// Null position from the V shape: fit a line to each flank (2–8 levels from the lowest point), take the crossing.
+// Null position: fit step² = k²(v − v0)² + c² (separate slope each side, shared floor c),
+// which is linear in (kl², kr², c²) for a given v0. Grid-search v0 and keep the best fit.
 function vFit(rows) {
   const pts = rows.slice().sort((a, b) => a.v - b.v);
-  const m = pts.reduce((b, p) => p.step < b.step ? p : b, pts[0]);
-  const side = sgn => pts.filter(p => sgn * (p.v - m.v) >= 2 && sgn * (p.v - m.v) <= 8);
-  const line = ps => { const n = ps.length, mx = ps.reduce((s, p) => s + p.v, 0) / n, my = ps.reduce((s, p) => s + p.step, 0) / n;
-    let num = 0, den = 0; ps.forEach(p => { num += (p.v - mx) * (p.step - my); den += (p.v - mx) ** 2; });
-    const a = num / den; return { a, b: my - a * mx }; };
-  const L = side(-1), Rr = side(1);
-  if (L.length >= 2 && Rr.length >= 2) {
-    const l = line(L), r = line(Rr);
-    if (l.a < 0 && r.a > 0) { const x = (r.b - l.b) / (l.a - r.a); if (Math.abs(x - m.v) <= 2) return x; }
+  const m = pts.reduce((b, p) => p.step < b.step ? p : b, pts[0]).v;
+  const solve3 = (A, y) => { // least squares via 3x3 normal equations (Cramer)
+    const N = [[0,0,0],[0,0,0],[0,0,0]], r = [0,0,0];
+    A.forEach((a, i) => { for (let j = 0; j < 3; j++) { r[j] += a[j] * y[i]; for (let k = 0; k < 3; k++) N[j][k] += a[j] * a[k]; } });
+    const det = M => M[0][0]*(M[1][1]*M[2][2]-M[1][2]*M[2][1]) - M[0][1]*(M[1][0]*M[2][2]-M[1][2]*M[2][0]) + M[0][2]*(M[1][0]*M[2][1]-M[1][1]*M[2][0]);
+    const D = det(N); if (Math.abs(D) < 1e-12) return null;
+    return [0, 1, 2].map(c => det(N.map((row, i) => row.map((x, j) => j === c ? r[i] : x))) / D);
+  };
+  let best = { v0: m, err: Infinity, c: NaN };
+  for (let v0 = m - 4; v0 <= m + 4; v0 += 0.05) {
+    const A = pts.map(p => p.v < v0 ? [(p.v - v0) ** 2, 0, 1] : [0, (p.v - v0) ** 2, 1]);
+    const q = solve3(A, pts.map(p => p.step ** 2));
+    if (!q || q[0] <= 0 || q[1] <= 0 || q[2] < 0) continue;
+    const err = pts.reduce((e, p) => e + (Math.sqrt((p.v < v0 ? q[0] : q[1]) * (p.v - v0) ** 2 + q[2]) - p.step) ** 2, 0);
+    if (err < best.err) best = { v0, err, c: Math.sqrt(q[2]) };
   }
-  return m.v;
+  vFit.floor = best.c;
+  return best.v0;
 }
 async function runAuto(kind) {
   auto = { stop: false }; refreshAuto();
@@ -462,14 +470,14 @@ async function runAuto(kind) {
         $('autoMsg').textContent = `Fine scan ${i + 1} of ${fine.length}: v = ${v}.`;
         rows.push({ v, ...(await measureAt({ ...base, v })) }); showRows(rows.slice().sort((a, b) => a.v - b.v)); plotRows(rows);
       }
-      const best = vFit(rows.filter(r => Math.abs(r.v - c) <= 9));
+      const best = vFit(rows.filter(r => Math.abs(r.v - c) <= 20));
       const gamma = Math.log(0.5) / Math.log(best / 255);
       $('autoBig').hidden = false;
       $('autoBig').innerHTML = `v ${best.toFixed(1)}<small> null point · gamma ≈ ${gamma.toFixed(2)}</small>`;
       $('autoMsg').textContent = 'Done. Gamma 2.2 would null near v 186. Tap Copy results and send them.';
       showRows(rows.slice().sort((a, b) => a.v - b.v), r => Math.abs(r.v - best) < 0.5 ? '← lowest' : '');
       plotRows(rows, best);
-      lastAuto = { test: 'null', best_v: +best.toFixed(2), gamma: +gamma.toFixed(3), rows: rows.map(r => ({ v: r.v, step: +r.step.toFixed(4), snr: +r.snr.toFixed(2) })) };
+      lastAuto = { test: 'null', best_v: +best.toFixed(2), gamma: +gamma.toFixed(3), floor: +(+vFit.floor).toFixed(2), rows: rows.map(r => ({ v: r.v, step: +r.step.toFixed(4), snr: +r.snr.toFixed(2) })) };
     } else {
       for (const v of [32, 128, 224]) {
         $('autoMsg').textContent = `Step test at v = ${v} (Δ = 1). Keep the phone still.`;
