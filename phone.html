@@ -369,21 +369,32 @@ document.addEventListener('visibilitychange', async () => {
 
 // ---- Laptop link (PeerJS) ----
 function setLink(text, cls) { $('linkPill').textContent = text; $('linkPill').className = 'pill ' + cls; }
-function connect(raw) {
+function connect(raw, attempt = 1) {
   const code = (raw || '').trim().toLowerCase();
   if (!/^[a-z0-9]{6}$/.test(code)) { setLink('Code must be 6 characters', 'bad'); return; }
-  if (!window.Peer) { setLink('Pairing library did not load', 'bad'); return; }
+  if (!window.Peer) { setLink('Pairing library did not load. Reload the page.', 'bad'); return; }
   if (peer) { try { peer.destroy(); } catch (e) {} }
-  link = null; refreshAuto(); setLink('Connecting…', 'mid');
-  peer = new Peer();
-  peer.on('open', () => {
-    const c = peer.connect('calibrue-' + code, { serialization: 'json', reliable: true });
-    c.on('open', () => { link = c; setLink('Paired', 'good'); refreshAuto(); });
+  link = null; refreshAuto(); setLink(attempt > 1 ? `Connecting… (try ${attempt})` : 'Connecting…', 'mid');
+  const p = peer = new Peer();
+  const retry = why => {
+    if (p !== peer || link) return;
+    if (attempt < 3) { setLink(why + ' Retrying…', 'mid'); setTimeout(() => { if (p === peer && !link) connect(code, attempt + 1); }, 2000); }
+    else setLink(why, 'bad');
+  };
+  // Stage 1: reach the pairing server. Stage 2: open the direct link to the laptop.
+  const serverTimer = setTimeout(() => retry('Pairing server not reachable. Check the phone\'s internet.'), 10000);
+  p.on('open', () => {
+    clearTimeout(serverTimer);
+    const c = p.connect('calibrue-' + code, { serialization: 'json', reliable: true });
+    const linkTimer = setTimeout(() => retry('Found the laptop but could not link. Put both on the same Wi-Fi.'), 12000);
+    c.on('open', () => { clearTimeout(linkTimer); if (p !== peer) return; link = c; setLink('Paired', 'good'); refreshAuto(); });
     c.on('data', onLapMsg);
-    c.on('close', () => { if (link === c) { link = null; setLink('Disconnected', 'bad'); refreshAuto(); } });
+    c.on('close', () => { if (link === c) { link = null; setLink('Disconnected. Tap Connect.', 'bad'); refreshAuto(); } });
   });
-  peer.on('error', e => {
-    setLink(e.type === 'peer-unavailable' ? 'Laptop not found. Check the code.' : 'Pairing problem: ' + (e.type || 'unknown'), 'bad');
+  p.on('error', e => {
+    clearTimeout(serverTimer);
+    if (e.type === 'peer-unavailable') retry('Laptop not found. Check the code, or reload the laptop page and scan the new QR code.');
+    else retry('Pairing problem: ' + (e.type || 'unknown') + '.');
     refreshAuto();
   });
 }

@@ -257,7 +257,7 @@ if (window.QRCode) new QRCode($('qr'), { text: phoneUrl, width: 192, height: 192
 else $('qr').hidden = true;
 if (window.Peer) {
   const peer = new Peer('calibrue-' + code);
-  peer.on('open', () => pairStatus('Waiting for iPhone'));
+  peer.on('open', () => pairStatus(conn ? 'iPhone connected' : 'Waiting for iPhone', !!conn));
   peer.on('connection', c => {
     if (conn) conn.close();
     conn = c;
@@ -265,7 +265,7 @@ if (window.Peer) {
     c.on('data', onMsg);
     c.on('close', () => { if (conn === c) { conn = null; pairStatus('iPhone disconnected. Scan again to reconnect.'); } });
   });
-  peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });
+  peer.on('disconnected', () => { if (!conn) pairStatus('Lost the pairing server. Reconnecting…'); setTimeout(() => { try { peer.reconnect(); } catch (e) {} }, 1500); });
   peer.on('error', e => pairStatus('Pairing problem: ' + (e.type || 'unknown') + '. Reload the page.'));
 } else pairStatus('Pairing library did not load. Check the internet connection and reload.');
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.run) keepAwake(); });
