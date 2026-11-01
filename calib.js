@@ -37,7 +37,7 @@
   // Find the null near prediction p. measure(v) → Promise<{step, snr}>.
   // 3 points around p, fit, 2 points around the estimate, refit; one more pair if the
   // estimate still lies outside the measured range. Returns {v0, k, c, pts}.
-  async function findNull(measure, p, g = 2.2) {
+  async function findNull(measure, p, g = 2.2, extra = false) {
     const fitNull_ = pts => fitNull(pts, g);
     const pts = [];
     const at = async v => {
@@ -62,6 +62,7 @@
       const vs = pts.map(q => q.v);
       if (f.v0 >= Math.min(...vs) && f.v0 <= Math.max(...vs)) break;
     }
+    if (extra) { await at(f.v0 - 1.5); await at(f.v0 + 1.5); f = fitNull_(pts); } // two more points close to the null
     return { ...f, pts };
   }
 
@@ -188,6 +189,43 @@
     return out;
   }
 
-  const api = { shiftGamma, refineRamps, fitNull, findNull, fractionAt, PLAN, measureCurve, smoothModel, curveF, curveV, ramp, gammaHalf };
+  // Run several null searches in lockstep: each search asks for one value at a time, and when
+  // every active search has asked, one combined measurement answers them all. measureBatch(reqs)
+  // gets [{ch, a, b, v, first}, ...] and returns one {step, snr} per request, in order.
+  function lockstep(measureBatch) {
+    let active = 0, pending = [], busy = false;
+    const flush = async () => {
+      if (busy || !pending.length || pending.length < active) return;
+      busy = true;
+      const batch = pending; pending = [];
+      try { const res = await measureBatch(batch.map(p => p.req)); batch.forEach((p, i) => p.resolve(res[i])); }
+      catch (e) { batch.forEach(p => p.reject(e)); }
+      busy = false;
+      setTimeout(flush, 0); // requests that arrived while measuring
+    };
+    return {
+      join() { active++; },
+      leave() { active--; flush(); },
+      measure(req) { return new Promise((resolve, reject) => { pending.push({ req, resolve, reject }); flush(); }); },
+    };
+  }
+
+  // All channels' curves at once. measureBatch as in lockstep(); onStep(ch, step) per null.
+  async function measureCurves(chans, measureBatch, onStep, extra = false) {
+    const L = lockstep(measureBatch);
+    chans.forEach(() => L.join());
+    const out = {};
+    await Promise.all(chans.map(async ch => {
+      try {
+        out[ch] = await measureCurve((a, b, p, g) => {
+          let first = true;
+          return findNull(v => { const req = { ch, a, b, v, first }; first = false; return L.measure(req); }, p, g, extra);
+        }, st => onStep && onStep(ch, st));
+      } finally { L.leave(); }
+    }));
+    return out;
+  }
+
+  const api = { lockstep, measureCurves, shiftGamma, refineRamps, fitNull, findNull, fractionAt, PLAN, measureCurve, smoothModel, curveF, curveV, ramp, gammaHalf };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Calib = api;
 })(typeof window !== 'undefined' ? window : globalThis);

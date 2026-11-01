@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-1">
+<meta name="calibrue-build" content="2026.11.02-2">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Calibrue · iPhone</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -93,15 +93,13 @@ details.adv>section+section{margin-top:14px}
       <li>Laptop on the charger, room dimmed.</li>
       <li>Windows: Settings → Display → Brightness → <b>Change brightness based on content: Off</b>.</li>
       <li>If a Calibrue profile is installed: <b>colorcpl</b> → Advanced → Change system defaults → <b>untick Use Windows display calibration</b>.</li>
-      <li>Rear camera flat on the laptop's centre square, this screen facing you. Keep still for about 12 minutes.</li>
+      <li>Rear camera flat on the laptop's centre square, this screen facing you. Keep still for about 6 minutes.</li>
     </ol>
     <button class="primary go" id="go" type="button" disabled>Calibrate</button>
     <ul class="stages" id="stages">
       <li data-k="signal">Signal check<small></small></li>
       <li data-k="pattern">Pattern check<small></small></li>
-      <li data-k="red">Red curve<small></small></li>
-      <li data-k="green">Green curve<small></small></li>
-      <li data-k="blue">Blue curve<small></small></li>
+      <li data-k="curves">Colour curves (R, G, B together)<small></small></li>
       <li data-k="finish">Build profile<small></small></li>
     </ul>
     <progress id="goProg" value="0" max="1" hidden></progress>
@@ -222,10 +220,10 @@ details.adv>section+section{margin-top:14px}
   </section>
 </main>
 
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-1"></script>
-<script src="link.js?v=2026.11.02-1"></script>
-<script src="analysis.js?v=2026.11.02-1"></script>
-<script src="calib.js?v=2026.11.02-1"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-2"></script>
+<script src="link.js?v=2026.11.02-2"></script>
+<script src="analysis.js?v=2026.11.02-2"></script>
+<script src="calib.js?v=2026.11.02-2"></script>
 <script>
 const $ = id => document.getElementById(id);
 const video = $('vid');
@@ -478,17 +476,51 @@ function refreshAuto(msg = true) {
   if (!auto && msg) $('autoMsg').textContent = !link ? 'Pair with the laptop first.' : !stream ? 'Start the camera.' : 'Press the phone flat on the square, then pick a test.';
 }
 // Set the laptop, wait for the camera to settle, then measure the flicker in fresh frames only.
-async function measureAt(state, settle = 800, dur = 2600, key = 'avg') {
+async function measureAt(state, settle = 800, dur = 2600, key = 'avg', { early = false, rel = false } = {}) {
   const ack = await command(state);
   await sleep(settle); if (auto.stop) throw new Error('Stopped.');
   const s0 = seq;
-  await sleep(dur); if (auto.stop) throw new Error('Stopped.');
-  const s = buf.filter(p => p.seq > s0);
-  if (s.length < 30) throw new Error('Too few camera frames. Keep the camera running and the page open.');
-  const t0 = s[0].t, t = s.map(p => p.t - t0), fps = (s.length - 1) / (t[t.length - 1] || 1);
-  const x = s.map(p => key === 'avg' ? (p.r + p.g + p.b) / 3 : p[key]);
-  const r = Flicker.analyze(t, x, ack.flicker, fps);
-  return { step: r.step, snr: r.snr, mean: avg(x) };
+  const read = (final = true) => {
+    const s = buf.filter(p => p.seq > s0);
+    if (s.length < 30) { if (!final) return null; throw new Error('Too few camera frames. Keep the camera running and the page open.'); }
+    const t0 = s[0].t, t = s.map(p => p.t - t0), fps = (s.length - 1) / (t[t.length - 1] || 1);
+    const x = s.map(p => key === 'avg' ? (p.r + p.g + p.b) / 3 : p[key]), m = avg(x);
+    const r = Flicker.analyze(t, x, ack.flicker, fps);
+    // rel: flicker as % of the camera's average level, so changes in the camera's exposure cancel out
+    return { step: rel ? r.step / m * 100 : r.step, snr: r.snr, mean: m };
+  };
+  if (early) { // a clear signal needs only half the time
+    await sleep(1300); if (auto.stop) throw new Error('Stopped.');
+    const r = read(false); if (r && r.snr >= 10) return r;
+    await sleep(dur - 1300);
+  } else await sleep(dur);
+  if (auto.stop) throw new Error('Stopped.');
+  return read();
+}
+// All three colours at once, each flickering at its own frequency (laptop 'multi' mode).
+// reqs: [{ch, a, b, v, first}] from Calib.measureCurves. Returns one {step, snr} per request.
+let multiState = null;
+async function measureMulti(reqs, pat, dur = 2600) {
+  if (!multiState) multiState = { red: { v: 128, lo: 0, hi: 255 }, green: { v: 128, lo: 0, hi: 255 }, blue: { v: 128, lo: 0, hi: 255 } };
+  for (const r of reqs) multiState[r.ch] = { v: Math.round(r.v), lo: r.a, hi: r.b };
+  const ack = await command({ mode: 'multi', pat, multi: multiState, run: true });
+  const fq = ack.flickers, keys = { red: 'r', green: 'g', blue: 'b' };
+  await sleep(reqs.some(r => r.first) ? 2500 : 800); if (auto.stop) throw new Error('Stopped.');
+  const s0 = seq;
+  const read = (final = true) => {
+    const s = buf.filter(p => p.seq > s0);
+    if (s.length < 30) { if (!final) return null; throw new Error('Too few camera frames. Keep the camera running and the page open.'); }
+    const t0 = s[0].t, t = s.map(p => p.t - t0), fps = (s.length - 1) / (t[t.length - 1] || 1);
+    return reqs.map(r => {
+      const x = s.map(p => p[keys[r.ch]]), m = avg(x);
+      const a = Flicker.analyze(t, x, fq[r.ch], fps, { hann: true, others: Object.keys(fq).filter(k => k !== r.ch).map(k => fq[k]) });
+      return { step: a.step / m * 100, snr: a.snr };
+    });
+  };
+  await sleep(1300); if (auto.stop) throw new Error('Stopped.');
+  const r1 = read(false); if (r1 && r1.every(r => r.snr >= 10)) return r1;
+  await sleep(dur - 1300); if (auto.stop) throw new Error('Stopped.');
+  return read();
 }
 function showRows(rows, mark) {
   $('autoTbl').hidden = false;
@@ -694,7 +726,7 @@ async function runPatterns() {
 
 
 // ---- One-button calibration ----
-const STAGES = ['signal', 'pattern', 'red', 'green', 'blue', 'finish'];
+const STAGES = ['signal', 'pattern', 'curves', 'finish'];
 function setStage(k, state, note) {
   const li = document.querySelector(`#stages li[data-k="${k}"]`); if (!li) return;
   if (state) li.dataset.s = state;
@@ -710,7 +742,7 @@ async function ensureCamera() {
 }
 async function greyNull(pat, first = true) {
   const r = await Calib.findNull(async v => {
-    const m = await measureAt({ mode: 'checker', ch: 'grey', lo: 0, hi: 255, ped: 0, pat, v, run: true }, first ? 2500 : 800, 2600);
+    const m = await measureAt({ mode: 'checker', ch: 'grey', lo: 0, hi: 255, ped: 0, pat, v, run: true }, first ? 2500 : 800, 2600, 'avg', { early: true, rel: true });
     first = false; return m;
   }, 187, 2.2);
   return { ...r, gamma: Math.log(0.5) / Math.log(r.v0 / 255) };
@@ -720,7 +752,7 @@ async function runFull() {
   STAGES.forEach(k => setStage(k, 'pending', ''));
   $('goResult').hidden = true;
   const prog = $('goProg'); prog.hidden = false;
-  const total = 1 + PATTERNS.length + 3 * Calib.PLAN.length; let done = 0; const t0 = Date.now();
+  const total = 1 + PATTERNS.length + Calib.PLAN.length + 1; let done = 0; const t0 = Date.now();
   const tick = () => { prog.value = ++done / total; };
   const left = () => done > 2 ? ` About ${Math.max(1, Math.round((Date.now() - t0) / done * (total - done) / 60000))} min left.` : '';
   const report = { test: 'full', started: new Date().toISOString() };
@@ -751,19 +783,15 @@ async function runFull() {
     try { localStorage.setItem('calibrue.pattern', chosen.pat); } catch (e) {}
     setStage('pattern', 'done', `grey ${greyGamma.toFixed(2)} · ${chosen.label}`);
 
-    // 3. Curves per channel with the chosen pattern.
-    const curves = {};
-    for (const [ch, key] of [['red', 'r'], ['green', 'g'], ['blue', 'b']]) {
-      stage = ch; setStage(ch, 'active');
-      curves[ch] = await Calib.measureCurve(
-        (a, b, p, g) => { let first = true;
-          return Calib.findNull(async v => {
-            const m = await measureAt({ mode: 'checker', ch, lo: a, hi: b, v, ped: CAL_PED, pat: chosen.pat, run: true }, first ? 2500 : 800, 2600, key);
-            first = false; return m; }, p, g); },
-        st => { if (st.i > 0) tick(); say(`${ch[0].toUpperCase() + ch.slice(1)} ${st.i + 1} of ${st.n}.${left()} Keep still.`); });
-      tick();
-      setStage(ch, 'done', 'gamma ' + Calib.gammaHalf(curves[ch]).toFixed(2));
-    }
+    // 3. Curves: red, green and blue together, each at its own flicker frequency.
+    stage = 'curves'; setStage('curves', 'active'); multiState = null;
+    const seen = {};
+    const curves = await Calib.measureCurves(['red', 'green', 'blue'],
+      reqs => measureMulti(reqs, chosen.pat),
+      (ch, st) => { if (!seen[ch + st.i]) { seen[ch + st.i] = 1; if (ch === 'red') { tick(); say(`Colour curves: point ${st.i + 1} of ${st.n}.${left()} Keep still.`); } } },
+      true);
+    tick();
+    setStage('curves', 'done', ['red', 'green', 'blue'].map(c => Calib.gammaHalf(curves[c]).toFixed(2)).join(' · '));
 
     // 4. Anchor the channel curves to the grey result, build ramps, hand over to the laptop.
     stage = 'finish'; setStage('finish', 'active'); say('Building the profile…');

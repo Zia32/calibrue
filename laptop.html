@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-1">
+<meta name="calibrue-build" content="2026.11.02-2">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Laptop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -88,6 +88,7 @@ button.dl{font-size:15px;padding:10px 14px}
         <option value="delta">Step test: v vs v + Δ</option>
         <option value="checker">Null test: v vs checkerboard</option>
         <option value="static">Static: v only</option>
+        <option value="multi">Colour curves: R, G, B at once</option>
       </select>
     </label>
     <label>Channel
@@ -165,16 +166,16 @@ button.dl{font-size:15px;padding:10px 14px}
   </div>
 </div>
 
-<script src="calib.js?v=2026.11.02-1"></script>
-<script src="icc.js?v=2026.11.02-1"></script>
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-1"></script>
-<script src="lib/qrcode-1.0.0.min.js?v=2026.11.02-1"></script>
-<script src="link.js?v=2026.11.02-1"></script>
+<script src="calib.js?v=2026.11.02-2"></script>
+<script src="icc.js?v=2026.11.02-2"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-2"></script>
+<script src="lib/qrcode-1.0.0.min.js?v=2026.11.02-2"></script>
+<script src="link.js?v=2026.11.02-2"></script>
 <script>
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d', { alpha: false });
 const $ = id => document.getElementById(id);
-const S = { mode: 'delta', ch: 'grey', v: 128, d: 1, lo: 0, hi: 255, ped: 0, pat: 'c1', freq: 6, size: 'square', run: false };
+const S = { mode: 'delta', ch: 'grey', v: 128, d: 1, lo: 0, hi: 255, ped: 0, pat: 'c1', multi: { red: { v: 128, lo: 0, hi: 255 }, green: { v: 128, lo: 0, hi: 255 }, blue: { v: 128, lo: 0, hi: 255 } }, freq: 6, size: 'square', run: false };
 
 let R = 60, half = 5, drops = 0, frames = 0, lastT = 0, phase = -1;
 let rect = null, A = null, B = null, chk = null, chkKey = '';
@@ -214,7 +215,27 @@ function layout() {
   else { const s = Math.round(Math.min(W, H) * 0.6); rect = { x: Math.round((W - s) / 2), y: Math.round((H - s) / 2), w: s, h: s }; }
   chkKey = ''; build();
 }
+// Multi mode: each colour alternates between its plain level v and its own checker (lo|hi) at its
+// own frequency, so the phone can measure all three at once and tell them apart by frequency.
+let multiImgs = null;
+const CH = ['red', 'green', 'blue'];
+function buildMulti() {
+  const w = rect.w, h = rect.h, M = S.multi;
+  multiImgs = [];
+  for (let idx = 0; idx < 8; idx++) {
+    const c = makeCanvas(), g = c.getContext('2d'), img = g.createImageData(w, h), d = img.data;
+    const val = CH.map((k, i) => (idx >> i) & 1 ? [clamp(M[k].lo), clamp(M[k].hi)] : [clamp(M[k].v), clamp(M[k].v)]);
+    let i = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const X = x + rect.x, Y = y + rect.y;
+      const on = S.pat === 'c2' ? ((X >> 1) + (Y >> 1)) & 1 : S.pat === 'h' ? Y & 1 : S.pat === 'v' ? X & 1 : (X + Y) & 1;
+      d[i] = val[0][on]; d[i + 1] = val[1][on]; d[i + 2] = val[2][on]; d[i + 3] = 255; i += 4;
+    }
+    g.putImageData(img, 0, 0); multiImgs.push(c);
+  }
+}
 function build() {
+  if (S.mode === 'multi') { buildMulti(); paintStage(); return; }
   A = uniform(S.v);
   if (S.mode === 'delta') B = uniform(S.v + S.d);
   else if (S.mode === 'checker') {
@@ -232,10 +253,17 @@ function paintStage() {
   }
   phase = -1;
 }
-function draw(st) { ctx.drawImage(st ? B : A, rect.x, rect.y); }
+function draw(st) { ctx.drawImage(S.mode === 'multi' ? multiImgs[st] : st ? B : A, rect.x, rect.y); }
 
+let mh = { red: 4, green: 5, blue: 6 };
 function setHalf() {
   half = Math.max(1, Math.round(R / (2 * S.freq)));
+  const used = new Set();
+  for (const [k, f] of [['red', 7.5], ['green', 6], ['blue', 5]]) {
+    let n = Math.max(2, Math.round(R / (2 * f)));
+    while (used.has(n)) n++;
+    used.add(n); mh[k] = n;
+  }
   $('rF').textContent = (R / (2 * half)).toFixed(2) + ' Hz';
   if (typeof send === 'function') send(stateMsg());
 }
@@ -254,7 +282,7 @@ function tick(t) {
   requestAnimationFrame(tick);
   if (lastT && S.run && t - lastT > 1.5 * 1000 / R) { drops++; $('rD').textContent = drops; }
   lastT = t; frames++;
-  const st = S.run ? Math.floor(frames / half) % 2 : 0;
+  const st = !S.run ? 0 : S.mode === 'multi' ? CH.reduce((a, k, i) => a | ((Math.floor(frames / mh[k]) % 2) << i), 0) : Math.floor(frames / half) % 2;
   if (st !== phase) { draw(st); phase = st; }
   if (pendingAck != null && phase !== -1) { send({ ...stateMsg(), type: 'ack', id: pendingAck }); pendingAck = null; }
 }
@@ -267,8 +295,8 @@ const code = Array.from(crypto.getRandomValues(new Uint8Array(6)), b => ALPHA[b 
 $('code').textContent = code.toUpperCase();
 function pairStatus(text, on) { $('pairStatus').textContent = text; $('dot').className = 'dot' + (on ? ' on' : ''); }
 function stateMsg() {
-  return { type: 'state', state: { mode: S.mode, ch: S.ch, v: S.v, d: S.d, lo: S.lo, hi: S.hi, ped: S.ped, pat: S.pat, run: S.run },
-           flicker: R / (2 * half), refresh: R, drops };
+  return { type: 'state', state: { mode: S.mode, ch: S.ch, v: S.v, d: S.d, lo: S.lo, hi: S.hi, ped: S.ped, pat: S.pat, multi: S.multi, run: S.run },
+           flicker: R / (2 * half), flickers: { red: R / (2 * mh.red), green: R / (2 * mh.green), blue: R / (2 * mh.blue) }, refresh: R, drops };
 }
 function send(m) { try { if (link) link.send(m); } catch (e) {} }
 function showCal(c) {
@@ -300,7 +328,8 @@ function onMsg(m) {
   if (m.id === lastSetId) { pendingAck = m.id; return; } // a resend: the patch is already up, just answer again
   lastSetId = m.id;
   const s = m.state || {};
-  if (['delta', 'checker', 'static'].includes(s.mode)) S.mode = s.mode;
+  if (['delta', 'checker', 'static', 'multi'].includes(s.mode)) S.mode = s.mode;
+  if (s.multi) for (const k of CH) if (s.multi[k]) for (const f of ['v', 'lo', 'hi']) if (Number.isFinite(s.multi[k][f])) S.multi[k][f] = s.multi[k][f];
   if (['grey', 'red', 'green', 'blue'].includes(s.ch)) S.ch = s.ch;
   if (Number.isFinite(s.v)) S.v = clamp(s.v);
   if (Number.isFinite(s.d)) S.d = Math.max(1, Math.min(64, Math.round(s.d)));
@@ -341,7 +370,7 @@ link = CalLink.open(code, 'laptop', {
 setInterval(() => { updatePair(); if (Date.now() - lastSeen < 12000) send(stateMsg()); }, 3000); // heartbeat while the phone is here
 
 // ---- Profile ready panel ----
-const dayOf = w => new Date(w).toISOString().slice(0, 10);
+const dayOf = w => { const d = new Date(w); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }; // local date
 const profName = () => `calibrue-${dayOf(calibration.when)}${calibration.refinements ? '-r' + calibration.refinements : ''}.icc`;
 let edidPrimaries = null;
 function readEdid() {
@@ -383,6 +412,7 @@ if (calibration && calibration.ramps) $('showDone').hidden = false;
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.run) keepAwake(); });
 
 function syncUI() {
+  if (S.mode === 'multi') $('vRead').textContent = CH.map(k => S.multi[k].v).join(' · '); else
   $('vRead').textContent = S.v + (S.mode === 'delta' ? ' / ' + clamp(S.v + S.d) : S.mode === 'checker' ? ' vs ' + S.lo + '|' + S.hi : '');
   $('v').value = S.v;
   $('dWrap').hidden = S.mode !== 'delta';

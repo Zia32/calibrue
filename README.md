@@ -27,11 +27,11 @@ The iPhone camera only works on HTTPS pages, so the files must be hosted.
 
 1. Laptop: open `laptop.html` on the charger, with Windows **Change brightness based on content: Off**, and any Calibrue profile's **Use Windows display calibration** unticked.
 2. iPhone: scan the laptop's QR code. The phone pairs through the relays.
-3. Press the rear camera flat on the centre square and tap **Calibrate**. About 12 minutes:
+3. Press the rear camera flat on the centre square and tap **Calibrate**. About 6 minutes:
    - **Signal check:** a 1-level step must reach SNR 4, or it stops and says what to fix.
    - **Pattern check:** grey null with 1×1 and 2×2 checkers and horizontal and vertical lines. The patterns that agree give the grey gamma; one of them is used from here on.
-   - **Red, green, blue curves:** 9 points each, other channels at 96.
-   - **Build profile:** the curves are shifted so their mean matches the grey gamma (single-channel patches read about 0.08 higher on Zia's panel), then turned into ramps.
+   - **Colour curves:** red, green and blue are measured together, each flickering at its own frequency (about 7.5, 6 and 5 Hz at 60 Hz refresh), separated on the phone with a Hann-windowed analysis. 9 points per colour; each null gets 7 measurements (3 around the prediction, 2 to confirm, 2 close to the null). Steps are read relative to the camera's average level so exposure changes cancel; a measurement stops after 1.3 s when the signal is already clear.
+   - **Build profile:** the curves are shifted so their mean matches the grey gamma (single-channel patches read about 0.08 higher on Zia's panel), then turned into ramps. In a physical simulation (display frames, camera exposure, sensor crosstalk, tone curve, noise) this matches the one-colour-at-a-time method's accuracy (corrected-screen error typically ΔL* ≈ 0.4) in a bit over half the time.
 4. The laptop shows **Profile ready**: download, optional EDID colours, install steps.
 5. After installing, pair again and tap **Verify** on the phone. Within ±0.03 of 2.2 it says on target. Otherwise the laptop builds a refined profile (`-r1`) to install instead.
 
