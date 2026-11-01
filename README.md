@@ -1,6 +1,6 @@
 # Calibrue — signal test, pairing, tone curves
 
-Two static web pages. No build step, no server code of our own. The phone and laptop talk directly over WebRTC (PeerJS); the public PeerJS server only introduces them.
+Two static web pages. No build step, no server code of our own. The phone and laptop exchange small messages through two public MQTT relays (EMQX and HiveMQ) at once; each message goes over both and duplicates are dropped, so either relay alone is enough. A direct WebRTC link was tried first but failed on routers that block local discovery.
 
 | File | Runs on | Does |
 |---|---|---|
@@ -9,7 +9,8 @@ Two static web pages. No build step, no server code of our own. The phone and la
 | `phone.html` | iPhone (Safari) | Measures the flicker with the camera |
 | `analysis.js` | phone | Lock-in amplitude, noise floor, SNR |
 | `calib.js` | phone | Null search, per-channel tone curves, correction ramps |
-| `lib/` | both | PeerJS 1.5.4 (pairing) and qrcodejs 1.0.0 (QR code), MIT licensed |
+| `link.js` | both | Phone ↔ laptop messages over the relays |
+| `lib/` | both | MQTT.js 5.10.1 (relay client) and qrcodejs 1.0.0 (QR code), MIT licensed |
 
 ## 1. Host it (GitHub Pages, free, HTTPS)
 

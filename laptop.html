@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.01-3">
+<meta name="calibrue-build" content="2026.11.01-4">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Laptop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -121,8 +121,9 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
   </div>
 </div>
 
-<script src="lib/peerjs-1.5.4.min.js?v=2026.11.01-3"></script>
-<script src="lib/qrcode-1.0.0.min.js?v=2026.11.01-3"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.01-4"></script>
+<script src="lib/qrcode-1.0.0.min.js?v=2026.11.01-4"></script>
+<script src="link.js?v=2026.11.01-4"></script>
 <script>
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d', { alpha: false });
@@ -211,8 +212,8 @@ function tick(t) {
 }
 requestAnimationFrame(tick);
 
-// ---- Pairing with the iPhone (PeerJS, direct WebRTC data channel) ----
-let conn = null, pendingAck = null, wake = null;
+// ---- Link to the iPhone (public MQTT relays, see link.js) ----
+let link = null, pendingAck = null, wake = null, lastSeen = 0, lastSetId = null;
 const ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789';
 const code = Array.from(crypto.getRandomValues(new Uint8Array(6)), b => ALPHA[b % ALPHA.length]).join('');
 $('code').textContent = code.toUpperCase();
@@ -221,7 +222,7 @@ function stateMsg() {
   return { type: 'state', state: { mode: S.mode, ch: S.ch, v: S.v, d: S.d, lo: S.lo, hi: S.hi, ped: S.ped, run: S.run },
            flicker: R / (2 * half), refresh: R, drops };
 }
-function send(m) { try { if (conn && conn.open) conn.send(m); } catch (e) {} }
+function send(m) { try { if (link) link.send(m); } catch (e) {} }
 function showCal(c) {
   if (!c || !c.gamma) { $('rC').textContent = 'none yet'; return; }
   const t = new Date(c.when);
@@ -239,6 +240,8 @@ function onMsg(m) {
     return;
   }
   if (!m || m.type !== 'set') return;
+  if (m.id === lastSetId) { pendingAck = m.id; return; } // a resend: the patch is already up, just answer again
+  lastSetId = m.id;
   const s = m.state || {};
   if (['delta', 'checker', 'static'].includes(s.mode)) S.mode = s.mode;
   if (['grey', 'red', 'green', 'blue'].includes(s.ch)) S.ch = s.ch;
@@ -258,19 +261,26 @@ $('build').textContent = 'Version ' + BUILD + '.';
 const phoneUrl = new URL('phone.html?pair=' + code + '&v=' + BUILD, location.href).href; // new query = fresh copy, not a cached one
 if (window.QRCode) new QRCode($('qr'), { text: phoneUrl, width: 192, height: 192, correctLevel: QRCode.CorrectLevel.M });
 else $('qr').hidden = true;
-if (window.Peer) {
-  const peer = new Peer('calibrue-' + code);
-  peer.on('open', () => pairStatus(conn ? 'iPhone connected' : 'Waiting for iPhone', !!conn));
-  peer.on('connection', c => {
-    if (conn) conn.close();
-    conn = c;
-    c.on('open', () => { pairStatus('iPhone connected', true); send(stateMsg()); });
-    c.on('data', onMsg);
-    c.on('close', () => { if (conn === c) { conn = null; pairStatus('iPhone disconnected. Scan again to reconnect.'); } });
-  });
-  peer.on('disconnected', () => { if (!conn) pairStatus('Lost the pairing server. Reconnecting…'); setTimeout(() => { try { peer.reconnect(); } catch (e) {} }, 1500); });
-  peer.on('error', e => pairStatus('Pairing problem: ' + (e.type || 'unknown') + '. Reload the page.'));
-} else pairStatus('Pairing library did not load. Check the internet connection and reload.');
+let relays = { relaysUp: 0, relays: 0 };
+function updatePair() {
+  const phone = Date.now() - lastSeen < 12000;
+  if (relays.error === 'library') pairStatus('Link library did not load. Reload the page.');
+  else if (phone) pairStatus('iPhone connected', true);
+  else if (relays.relaysUp > 0) pairStatus(lastSeen ? 'iPhone not responding. Is its page open?' : 'Waiting for iPhone');
+  else pairStatus('Connecting to the relay… (needs internet)');
+}
+link = CalLink.open(code, 'laptop', {
+  onMessage: m => {
+    if (!m) return;
+    const fresh = Date.now() - lastSeen >= 12000;
+    lastSeen = Date.now();
+    if (m.type === 'hello' || (m.type === 'ping' && fresh)) send(stateMsg()); // a phone just joined: tell it what's on screen
+    if (m.type !== 'hello' && m.type !== 'ping') onMsg(m);
+    updatePair();
+  },
+  onStatus: s => { relays = s; updatePair(); },
+});
+setInterval(() => { updatePair(); if (Date.now() - lastSeen < 12000) send(stateMsg()); }, 3000); // heartbeat while the phone is here
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.run) keepAwake(); });
 
 function syncUI() {

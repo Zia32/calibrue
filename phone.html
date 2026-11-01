@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.01-3">
+<meta name="calibrue-build" content="2026.11.01-4">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Calibrue · iPhone</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -174,16 +174,17 @@ video{width:96px;height:72px;border-radius:6px;background:#000;object-fit:cover;
   </section>
 </main>
 
-<script src="lib/peerjs-1.5.4.min.js?v=2026.11.01-3"></script>
-<script src="analysis.js?v=2026.11.01-3"></script>
-<script src="calib.js?v=2026.11.01-3"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.01-4"></script>
+<script src="link.js?v=2026.11.01-4"></script>
+<script src="analysis.js?v=2026.11.01-4"></script>
+<script src="calib.js?v=2026.11.01-4"></script>
 <script>
 const $ = id => document.getElementById(id);
 const video = $('vid');
 const grab = document.createElement('canvas'); grab.width = 64; grab.height = 48;
 const gctx = grab.getContext('2d', { willReadFrequently: true });
 let stream = null, track = null, wake = null, buf = [], hist = [], last = null, timer = null, lastMediaTime = -1, gen = 0, seq = 0;
-let peer = null, link = null, lap = null, msgId = 0, auto = null, lastAuto = null;
+let rl = null, paired = false, lastHeard = 0, link = null, lap = null, msgId = 0, auto = null, lastAuto = null;
 const waiters = new Map();
 
 function setStatus(t, err) { $('status').textContent = t; $('status').className = 'status' + (err ? ' err' : ''); }
@@ -368,38 +369,36 @@ document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible' && stream) { try { wake = await navigator.wakeLock?.request('screen'); } catch (e) {} }
 });
 
-// ---- Laptop link (PeerJS) ----
+// ---- Laptop link (public MQTT relays, see link.js) ----
+// `link` is set only while the laptop is answering; everything else checks it.
 function setLink(text, cls) { $('linkPill').textContent = text; $('linkPill').className = 'pill ' + cls; }
-function connect(raw, attempt = 1) {
+let linkCode = '', linkStart = 0, relayState = { relaysUp: 0, relays: 0 };
+function connect(raw) {
   const code = (raw || '').trim().toLowerCase();
   if (!/^[a-z0-9]{6}$/.test(code)) { setLink('Code must be 6 characters', 'bad'); return; }
-  if (!window.Peer) { setLink('Pairing library did not load. Reload the page.', 'bad'); return; }
-  if (peer) { try { peer.destroy(); } catch (e) {} }
-  link = null; refreshAuto(); setLink(attempt > 1 ? `Connecting… (try ${attempt})` : 'Connecting…', 'mid');
-  const p = peer = new Peer();
-  const retry = why => {
-    if (p !== peer || link) return;
-    if (attempt < 3) { setLink(why + ' Retrying…', 'mid'); setTimeout(() => { if (p === peer && !link) connect(code, attempt + 1); }, 2000); }
-    else setLink(why, 'bad');
-  };
-  // Stage 1: reach the pairing server. Stage 2: open the direct link to the laptop.
-  const serverTimer = setTimeout(() => retry('Pairing server not reachable. Check the phone\'s internet.'), 10000);
-  p.on('open', () => {
-    clearTimeout(serverTimer);
-    const c = p.connect('calibrue-' + code, { serialization: 'json', reliable: true });
-    const linkTimer = setTimeout(() => retry('Found the laptop but could not link. Put both on the same Wi-Fi.'), 12000);
-    c.on('open', () => { clearTimeout(linkTimer); if (p !== peer) return; link = c; setLink('Paired', 'good'); refreshAuto(); });
-    c.on('data', onLapMsg);
-    c.on('close', () => { if (link === c) { link = null; setLink('Disconnected. Tap Connect.', 'bad'); refreshAuto(); } });
-  });
-  p.on('error', e => {
-    clearTimeout(serverTimer);
-    if (e.type === 'peer-unavailable') retry('Laptop not found. Check the code, or reload the laptop page and scan the new QR code.');
-    else retry('Pairing problem: ' + (e.type || 'unknown') + '.');
-    refreshAuto();
+  if (rl) rl.close();
+  linkCode = code; linkStart = Date.now(); lastHeard = 0; paired = false; link = null; refreshAuto();
+  setLink('Connecting…', 'mid');
+  rl = CalLink.open(code, 'phone', {
+    onMessage: m => { lastHeard = Date.now(); onLapMsg(m); linkTick(); },
+    onStatus: s => { relayState = s; rl && rl.send({ type: 'hello' }); linkTick(); },
   });
 }
+// Keep the pill honest: paired while the laptop was heard in the last 12 s.
+function linkTick() {
+  if (!rl) return;
+  const now = Date.now(), heard = now - lastHeard < 12000;
+  if (heard !== paired) { paired = heard; link = heard ? rl : null; refreshAuto(); }
+  if (relayState.error === 'library') setLink('Link library did not load. Reload the page.', 'bad');
+  else if (paired) setLink('Paired', 'good');
+  else if (relayState.relaysUp === 0) setLink(now - linkStart > 10000 ? 'Relay not reachable. Check the phone\'s internet.' : 'Connecting…', now - linkStart > 10000 ? 'bad' : 'mid');
+  else if (lastHeard) setLink('Laptop stopped answering. Is its page still open?', 'bad');
+  else setLink(now - linkStart > 8000 ? 'Laptop not answering. Reload the laptop page and scan the new QR code.' : 'Looking for the laptop…', now - linkStart > 8000 ? 'bad' : 'mid');
+}
+let tickN = 0; // hello every 1 s until the laptop answers, then a ping every 4 s
+setInterval(() => { if (!rl) return; tickN++; if (!paired || tickN % 4 === 0) rl.send({ type: paired ? 'ping' : 'hello' }); linkTick(); }, 1000);
 function onLapMsg(m) {
+  if (m && m.type === 'calibration-saved') { calSaved = true; return; }
   if (!m || (m.type !== 'state' && m.type !== 'ack')) return;
   lap = m;
   const s = m.state, F = Number.isFinite(m.flicker) ? m.flicker.toFixed(2) + ' Hz' : '?';
@@ -410,11 +409,12 @@ function onLapMsg(m) {
 }
 function command(state) {
   return new Promise((res, rej) => {
-    if (!link) return rej(new Error('Not paired with the laptop.'));
-    const id = ++msgId;
-    const to = setTimeout(() => { waiters.delete(id); rej(new Error('The laptop did not answer. Is its page still open?')); }, 4000);
-    waiters.set(id, m => { clearTimeout(to); res(m); });
-    link.send({ type: 'set', id, state });
+    if (!link) return rej(new Error('Not connected to the laptop. Check the Laptop link at the top.'));
+    const id = ++msgId, msg = { type: 'set', id, state };
+    const again = setInterval(() => rl && rl.send(msg), 1000); // relay messages can drop: resend until answered
+    const to = setTimeout(() => { clearInterval(again); waiters.delete(id); rej(new Error('The laptop did not answer for 15 s. Is its page still open?')); }, 15000);
+    waiters.set(id, m => { clearInterval(again); clearTimeout(to); res(m); });
+    rl.send(msg);
   });
 }
 
@@ -560,7 +560,7 @@ function showCalTable(curves) {
 }
 // Other two channels held at this level while one channel is measured. Without it the camera
 // exposes for a mostly dark patch and the measured channel clips at 255.
-let CAL_PED = 96;
+let CAL_PED = 96, calSaved = false;
 async function runCal() {
   auto = { stop: false, kind: 'cal' }; refreshAuto();
   $('calBig').hidden = true;
@@ -592,8 +592,11 @@ async function runCal() {
     $('calBig').innerHTML = `${gam.red.toFixed(2)} · ${gam.green.toFixed(2)} · ${gam.blue.toFixed(2)}<small> gamma R · G · B</small>`;
     const slim = c => curves[c].map(p => ({ F: +p.F.toFixed(5), v: +p.v.toFixed(2), ...(p.fit ? { k: +(+p.fit.k).toFixed(3), c: +(+p.fit.c).toFixed(2), n: p.fit.pts.length } : {}) }));
     lastAuto = { test: 'calibration', minutes: +((Date.now() - t0) / 60000).toFixed(1), gamma: gam, curves: { red: slim('red'), green: slim('green'), blue: slim('blue') } };
-    try { link.send({ type: 'calibration', when: new Date().toISOString(), gamma: gam, curves: lastAuto.curves, ramps }); } catch (e) {}
-    $('calMsg').textContent = 'Done. Sent to the laptop. Tap Copy results and send them.';
+    const calMsg = { type: 'calibration', when: new Date().toISOString(), gamma: gam, curves: lastAuto.curves, ramps };
+    calSaved = false;
+    for (let i = 0; i < 5 && !calSaved; i++) { rl && rl.send(calMsg); await sleep(1500); }
+    $('calMsg').textContent = calSaved ? 'Done. Saved on the laptop. Tap Copy results and send them.'
+      : 'Done, but the laptop did not confirm it received the result. Tap Copy results and send them.';
   } catch (e) {
     $('calMsg').textContent = e.message + (Object.keys(curves).length ? ' Channels finished before stopping are shown below.' : '');
   }
