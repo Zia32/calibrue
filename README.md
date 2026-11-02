@@ -13,6 +13,7 @@ Two static web pages. No build step, no server code of our own. The phone and la
 | `icc.js` | laptop | ICC v2.4 writer with a `vcgt` calibration table |
 | `link.js` | both | Phone ↔ laptop messages over the relays |
 | `report.html` | laptop | Calibration report |
+| `store.js` | laptop | Current calibration, history (30 kept), which screen it belongs to |
 | `install.js` | laptop | Builds the one-click installer (.cmd + PowerShell) |
 | `lib/` | both | MQTT.js 5.10.1 (relay client) and qrcodejs 1.0.0 (QR code), MIT licensed |
 
@@ -40,7 +41,9 @@ The iPhone camera only works on HTTPS pages, so the files must be hosted.
 6. Pair again and tap **Verify**: grey at 25/50/75% light. Largest error ΔL* ≤ 0.5 is on target; otherwise the laptop builds a refined profile (`-r1`) that corrects the whole curve.
 7. `report.html`: before/after, tone-response chart, every check (signal, pattern agreement, stability drift, grey balance) and the verification history; prints to PDF.
 
-`profile.html` has the details view, EDID tools and **Match the white**: two sliders (warmer/cooler, greener/magenta) to match the laptop's white to another screen by eye. The result scales the three ramps (largest gain stays 1), so greys carry the same tint and peak brightness drops only a few percent. The camera is not used for this because its colour response differs from the eye's between different panel types. The single tests are under **Advanced tools** on the phone.
+**External monitors:** drag the laptop page onto the monitor and press F for fullscreen there. With the browser's window-management permission ("Identify this screen" in the panel) the page knows the screen's name; calibrations, file names (`calibrue-UP3017-….icc`) and the installer then target that screen. Without it, the installer asks which screen.
+
+`profile.html` has **All calibrations** (use an older one or delete it), the details view, EDID tools and **Match the white**: two sliders (warmer/cooler, greener/magenta) to match the laptop's white to another screen by eye. The result scales the three ramps (largest gain stays 1), so greys carry the same tint and peak brightness drops only a few percent. The camera is not used for this because its colour response differs from the eye's between different panel types. The single tests are under **Advanced tools** on the phone.
 
 ## 3. Prepare
 

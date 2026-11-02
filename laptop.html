@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-6">
+<meta name="calibrue-build" content="2026.11.02-7">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Laptop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -127,9 +127,11 @@ button.dl{font-size:15px;padding:10px 14px}
     <dt>Actual flicker</dt><dd id="rF">–</dd>
     <dt>Dropped frames</dt><dd id="rD">0</dd>
     <dt>Pixel ratio</dt><dd id="rP">–</dd>
+    <dt>Screen</dt><dd id="rS">–</dd>
     <dt>Calibration</dt><dd id="rC">none yet</dd>
   </dl>
 
+  <a class="plink" href="#" id="identify" hidden>Identify this screen (shows its name) →</a>
   <div class="prog" id="prog" hidden></div>
   <a class="plink" href="#" id="showDone" hidden>Show profile download →</a>
   <a class="plink" href="profile.html">Profile details and EDID →</a>
@@ -177,12 +179,13 @@ button.dl{font-size:15px;padding:10px 14px}
   </div>
 </div>
 
-<script src="calib.js?v=2026.11.02-6"></script>
-<script src="icc.js?v=2026.11.02-6"></script>
-<script src="install.js?v=2026.11.02-6"></script>
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-6"></script>
-<script src="lib/qrcode-1.0.0.min.js?v=2026.11.02-6"></script>
-<script src="link.js?v=2026.11.02-6"></script>
+<script src="store.js?v=2026.11.02-7"></script>
+<script src="calib.js?v=2026.11.02-7"></script>
+<script src="icc.js?v=2026.11.02-7"></script>
+<script src="install.js?v=2026.11.02-7"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-7"></script>
+<script src="lib/qrcode-1.0.0.min.js?v=2026.11.02-7"></script>
+<script src="link.js?v=2026.11.02-7"></script>
 <script>
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d', { alpha: false });
@@ -317,14 +320,24 @@ function showCal(c) {
   $('rC').textContent = `${c.gamma.red.toFixed(2)} · ${c.gamma.green.toFixed(2)} · ${c.gamma.blue.toFixed(2)}`;
   $('rC').title = 'Gamma R · G · B, measured ' + t.toLocaleString();
 }
-let calibration = null;
-try { calibration = JSON.parse(localStorage.getItem('calibrue.calibration') || 'null'); } catch (e) {}
+let calibration = Store.current();
 showCal(calibration);
-function saveCal(c) { calibration = c; showCal(c); try { localStorage.setItem('calibrue.calibration', JSON.stringify(c)); } catch (e) {} }
+function saveCal(c) { calibration = Store.save(c); showCal(c); }
+// The screen this page is on. Calibrations are stored per screen, and the installer targets it.
+let thisScreen = null;
+async function updateScreen(ask) {
+  thisScreen = await Store.screenInfo(ask);
+  $('rS').textContent = Store.screenName(thisScreen);
+  $('identify').hidden = thisScreen.known || !('getScreenDetails' in window);
+  if (!updateScreen.hooked && thisScreen.known) { updateScreen.hooked = true; Store.onScreenChange(() => updateScreen(false)); }
+}
+updateScreen(false);
+addEventListener('resize', () => updateScreen(false)); // moving the window to another screen resizes it
+$('identify').onclick = async e => { e.preventDefault(); await updateScreen(true); };
 function onMsg(m) {
   if (m && m.type === 'progress') { $('prog').hidden = false; $('prog').textContent = m.text; return; }
   if (m && m.type === 'calibration') { // finished measurement from the phone: save it and offer the profile
-    if (!(calibration && calibration.when === m.when)) { saveCal(m); showDone('new'); }
+    if (!(calibration && calibration.when === m.when)) { saveCal({ ...m, screen: thisScreen }); showDone('new'); }
     send({ type: 'calibration-saved' });
     return;
   }
@@ -390,7 +403,7 @@ setInterval(() => { updatePair(); if (Date.now() - lastSeen < 12000) send(stateM
 
 // ---- Profile ready panel ----
 const dayOf = w => { const d = new Date(w); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }; // local date
-const profName = () => `calibrue-${dayOf(calibration.when)}${calibration.refinements ? '-r' + calibration.refinements : ''}.icc`;
+const profName = () => Store.profileName(calibration);
 let edidPrimaries = null;
 function readEdid() {
   const raw = $('dEdidIn').value.trim();
@@ -403,7 +416,7 @@ function readEdid() {
 }
 function showDone(kind) {
   if (!calibration || !calibration.ramps) return;
-  $('dTitle').textContent = kind === 'refined' ? 'Refined profile ready' : 'Profile ready';
+  $('dTitle').textContent = (kind === 'refined' ? 'Refined profile ready' : 'Profile ready') + (calibration.screen ? ` · ${Store.screenName(calibration.screen)}` : '');
   const from = calibration.refinedFrom ? calibration.refinedFrom : calibration.greyGamma;
   $('dGamma').innerHTML = Number.isFinite(from) ? `${from.toFixed(2)} → 2.20<small> gamma ${kind === 'refined' ? 'measured with the old profile' : 'measured'} → target</small>` : '';
   $('dNote').textContent = kind === 'refined'
@@ -419,7 +432,7 @@ readEdid();
 function profileBytes() {
   let wg = null; try { const w = JSON.parse(localStorage.getItem('calibrue.white') || '{}'); if (w.t || w.m) wg = Calib.whiteGains(w.t, w.m); } catch (e) {}
   return ICC.build({ ramps: Calib.applyGains(calibration.ramps, wg), primaries: edidPrimaries || ICC.SRGB,
-    name: `Calibrue ${dayOf(calibration.when)} gamma 2.2${calibration.refinements ? ' r' + calibration.refinements : ''}`, copyright: 'Created with Calibrue (zia32.github.io/calibrue)' });
+    name: `Calibrue ${Store.screenTag(calibration.screen) ? Store.screenTag(calibration.screen) + ' ' : ''}${dayOf(calibration.when)} gamma 2.2${calibration.refinements ? ' r' + calibration.refinements : ''}`, copyright: 'Created with Calibrue (zia32.github.io/calibrue)' });
 }
 function saveFile(data, name, type) {
   const url = URL.createObjectURL(new Blob([data], { type }));
@@ -428,7 +441,7 @@ function saveFile(data, name, type) {
 }
 $('dDl').onclick = () => { saveFile(profileBytes(), profName(), 'application/vnd.iccprofile'); $('dFile').textContent = 'Downloaded ' + profName() + '. Install it by hand (below).'; };
 $('dInst').onclick = () => {
-  saveFile(Installer.script(profileBytes(), profName()), 'Install Calibrue profile.cmd', 'application/octet-stream');
+  saveFile(Installer.script(profileBytes(), profName(), calibration.screen), `Install Calibrue profile (${Store.screenTag(calibration.screen) || 'screen'}).cmd`, 'application/octet-stream');
   $('dFile').textContent = 'Downloaded the installer for ' + profName() + '. Open it:';
 };
 $('dClose').onclick = () => { $('done').hidden = true; };

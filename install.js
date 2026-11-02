@@ -6,9 +6,12 @@
 (function (root) {
   const b64 = bytes => { let s = ''; for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return (typeof btoa === 'function' ? btoa(s) : Buffer.from(s, 'binary').toString('base64')); };
 
-  function script(profileBytes, fileName) {
+  // target: the screen it was measured on, {internal, label} (from the laptop page), or nothing.
+  function script(profileBytes, fileName, target) {
     const name = String(fileName).replace(/[^A-Za-z0-9._-]/g, '_');
     const data = b64(profileBytes).replace(/(.{100})/g, '$1\n'); // wrapped for readability
+    const tInternal = target && target.internal === true ? '$true' : target && target.internal === false ? '$false' : '$null';
+    const tLabel = String((target && target.label) || '').replace(/[^\w .()-]/g, '');
     // The first block is read by cmd.exe and is a comment for PowerShell; the rest is PowerShell.
     const ps = String.raw`<# : Calibrue profile installer. Double-click to run.
 @echo off
@@ -20,6 +23,8 @@ exit /b
 #>
 $ErrorActionPreference = 'Stop'
 $ProfileName = '${name}'
+$TargetInternal = ${tInternal}   # measured on the built-in screen?
+$TargetLabel = '${tLabel}'      # or this monitor (name as Windows shows it)
 $ProfileData = @'
 ${data}
 '@
@@ -94,11 +99,20 @@ public static class CalibrueWcs {
     }
   }
   if ($monitors.Count -eq 0) { throw 'Windows reported no screens.' }
-  $target = @($monitors | Where-Object Internal)
+  # Pick the screen it was measured on: by name for a monitor, or the built-in panel.
+  $target = @()
+  if ($TargetLabel -and $TargetInternal -ne $true) {
+    try {
+      $named = @(Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorID | Where-Object {
+        (-join ($_.UserFriendlyName | Where-Object { $_ -ne 0 } | ForEach-Object { [char]$_ })) -eq $TargetLabel } | ForEach-Object { ($_.InstanceName -split '\\')[1] })
+      $target = @($monitors | Where-Object { $named -contains $_.Model })
+    } catch {}
+  }
+  if ($target.Count -ne 1 -and $TargetInternal -ne $false) { $target = @($monitors | Where-Object Internal) }
   if ($target.Count -ne 1) {
     if ($monitors.Count -eq 1) { $target = @($monitors[0]) }
     else {
-      Say 'Which screen did you calibrate?' 'Yellow'
+      Say ('Which screen did you calibrate?' + $(if ($TargetLabel) { " (measured on: $TargetLabel)" } else { '' })) 'Yellow'
       for ($i = 0; $i -lt $monitors.Count; $i++) { Say ("  {0}. {1} ({2})" -f ($i + 1), $monitors[$i].Name, $monitors[$i].Model) }
       $pick = [int](Read-Host 'Number') - 1
       if ($pick -lt 0 -or $pick -ge $monitors.Count) { throw 'No screen chosen.' }

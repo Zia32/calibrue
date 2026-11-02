@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-6">
+<meta name="calibrue-build" content="2026.11.02-7">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Report</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -103,12 +103,13 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   </div>
 </main>
 
-<script src="calib.js?v=2026.11.02-6"></script>
-<script src="icc.js?v=2026.11.02-6"></script>
+<script src="store.js?v=2026.11.02-7"></script>
+<script src="calib.js?v=2026.11.02-7"></script>
+<script src="icc.js?v=2026.11.02-7"></script>
 <script>
 const $ = id => document.getElementById(id);
 const BUILD = document.querySelector('meta[name=calibrue-build]').content;
-let cal = null; try { cal = JSON.parse(localStorage.getItem('calibrue.calibration') || 'null'); } catch (e) {}
+let cal = Store.current();
 const fmtDate = w => new Date(w).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 $('print').onclick = () => window.print();
 $('meta').textContent = `Calibrue ${BUILD} · ${navigator.platform || ''}`.trim();
@@ -118,7 +119,7 @@ else {
   $('body').hidden = false;
   const rep = cal.report || {}, vers = cal.verifications || [], last = vers[vers.length - 1];
   const day = d => { d = new Date(d); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-  $('meta').textContent = `Measured ${fmtDate(rep.started || cal.when)} · profile calibrue-${day(cal.when)}${cal.refinements ? '-r' + cal.refinements : ''} · Calibrue ${BUILD}`;
+  $('meta').textContent = `${Store.screenName(cal.screen)[0].toUpperCase() + Store.screenName(cal.screen).slice(1)} · measured ${fmtDate(rep.started || cal.when)} · profile ${Store.profileName(cal)} · Calibrue ${BUILD}`;
 
   // ---- verdict ----
   const before = cal.greyGamma || (rep.patterns && rep.patterns.greyGamma);

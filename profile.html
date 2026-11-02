@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-6">
+<meta name="calibrue-build" content="2026.11.02-7">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Profile</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -58,6 +58,7 @@ a{color:var(--accent)}
 
 ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px;max-width:66ch}
 kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:4px;padding:0 5px}
+#histTbl button{font-size:13px;padding:4px 10px}
 table{border-collapse:collapse;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
 th{font-family:var(--sans);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;text-align:right;padding:2px 0 4px 18px}
 th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:right;padding:3px 0 3px 18px;border-top:1px solid var(--line)}
@@ -79,12 +80,19 @@ th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:righ
       <div class="big" id="calGamma"></div>
       <dl class="kv">
         <dt>Measured</dt><dd id="calWhen"></dd>
+        <dt>Screen</dt><dd id="calScreen"></dd>
         <dt>Target</dt><dd>gamma 2.2, white point unchanged</dd>
         <dt>Grey balance</dt><dd id="calBal"></dd>
       </dl>
       <table id="calTbl"><thead><tr><th>Input</th><th>R out</th><th>G out</th><th>B out</th></tr></thead><tbody></tbody></table>
       <p class="note">The table shows what the correction does: each input level is sent to the screen as the output level, so that the screen lands on gamma 2.2.</p>
     </div>
+  </section>
+
+  <section id="history">
+    <h2><span class="n">·</span>All calibrations</h2>
+    <p class="note">Every calibration and refinement is kept here, per screen. <b>Use</b> makes it the current one: download or install it again to switch back.</p>
+    <div style="overflow-x:auto"><table id="histTbl"><thead><tr><th>Measured</th><th>Screen</th><th>Before</th><th>Verified</th><th></th></tr></thead><tbody></tbody></table></div>
   </section>
 
   <section>
@@ -161,26 +169,28 @@ th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:righ
     <div class="row"><button id="wExit" type="button">Done</button><span id="wOut2" style="font-size:13px"></span></div>
   </div>
 </div>
-<script src="calib.js?v=2026.11.02-6"></script>
-<script src="icc.js?v=2026.11.02-6"></script>
-<script src="install.js?v=2026.11.02-6"></script>
+<script src="store.js?v=2026.11.02-7"></script>
+<script src="calib.js?v=2026.11.02-7"></script>
+<script src="icc.js?v=2026.11.02-7"></script>
+<script src="install.js?v=2026.11.02-7"></script>
 <script>
 const $ = id => document.getElementById(id);
 $('build').textContent = 'Version ' + document.querySelector('meta[name=calibrue-build]').content + '.';
 let cal = null, primaries = ICC.SRGB;
 var white = { t: 0, m: 0 }; // white-point adjustment, see 'Match the white'
 function gains() { return (white.t || white.m) ? Calib.whiteGains(white.t, white.m) : null; }
-try { cal = JSON.parse(localStorage.getItem('calibrue.calibration') || 'null'); } catch (e) {}
+cal = Store.current();
 const ok = cal && cal.ramps && ['red', 'green', 'blue'].every(c => Array.isArray(cal.ramps[c]) && cal.ramps[c].length === 256);
 
 const day = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; // local date
-const fileName = () => `calibrue-${day(new Date(cal.when))}${cal.refinements ? '-r' + cal.refinements : ''}.icc`;
+const fileName = () => Store.profileName(cal);
 
 if (ok) {
   $('noCal').hidden = true; $('hasCal').hidden = false;
   const g = cal.gamma;
   $('calGamma').innerHTML = `${g.red.toFixed(2)} · ${g.green.toFixed(2)} · ${g.blue.toFixed(2)}<small> measured gamma R · G · B</small>`;
   $('calWhen').textContent = new Date(cal.when).toLocaleString();
+  $('calScreen').textContent = Store.screenName(cal.screen);
   // grey balance: largest R/G/B code difference at equal light, across the measured points
   let spread = 0;
   if (cal.curves && cal.curves.red) cal.curves.red.forEach((p, i) => {
@@ -192,6 +202,30 @@ if (ok) {
     `<tr><td>${i}</td>${['red', 'green', 'blue'].map(c => `<td>${(cal.ramps[c][i] / 65535 * 255).toFixed(1)}</td>`).join('')}</tr>`).join('');
   $('dl').disabled = false; $('inst').disabled = false; $('dlName').textContent = fileName(); $('instName').textContent = fileName();
 }
+
+
+// ---- History ----
+function showHistory() {
+  const h = Store.history(), cur = Store.current();
+  $('history').hidden = h.length < 1;
+  $('histTbl').tBodies[0].innerHTML = h.map(c => {
+    const v = (c.verifications || []).slice(-1)[0];
+    const isCur = cur && cur.when === c.when;
+    return `<tr><td>${new Date(c.when).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}${c.refinements ? ` <span class="note">(refined ×${c.refinements})</span>` : ''}</td>
+      <td>${Store.screenName(c.screen)}</td><td>${Number.isFinite(c.greyGamma) ? c.greyGamma.toFixed(2) : '–'}</td>
+      <td>${v ? (v.pass ? 'on target' : 'off target') + ` (ΔL* ${v.worstDL.toFixed(2)})` : '–'}</td>
+      <td style="white-space:nowrap">${isCur ? '<b>current</b>' : `<button type="button" data-use="${c.when}">Use</button>`} <button type="button" data-del="${c.when}" aria-label="Delete">Delete</button></td></tr>`;
+  }).join('');
+}
+$('histTbl').addEventListener('click', e => {
+  const u = e.target.dataset.use, d = e.target.dataset.del;
+  if (u) { Store.use(u); location.reload(); }
+  if (d) {
+    if (e.target.dataset.sure) { Store.remove(d); location.reload(); }
+    else { e.target.dataset.sure = '1'; e.target.textContent = 'Delete?'; setTimeout(() => { delete e.target.dataset.sure; e.target.textContent = 'Delete'; }, 3000); }
+  }
+});
+showHistory();
 
 // ---- EDID ----
 $('copyCmd').onclick = async () => {
@@ -258,7 +292,7 @@ showWhite();
 
 // ---- Download ----
 function profileBytes() {
-  return ICC.build({ ramps: Calib.applyGains(cal.ramps, gains()), primaries, name: `Calibrue ${day(new Date(cal.when))} gamma 2.2${cal.refinements ? ' r' + cal.refinements : ''}`,
+  return ICC.build({ ramps: Calib.applyGains(cal.ramps, gains()), primaries, name: `Calibrue ${Store.screenTag(cal.screen) ? Store.screenTag(cal.screen) + ' ' : ''}${day(new Date(cal.when))} gamma 2.2${cal.refinements ? ' r' + cal.refinements : ''}`,
     copyright: 'Created with Calibrue (zia32.github.io/calibrue)' });
 }
 function saveFile(data, name, type) {
@@ -267,7 +301,7 @@ function saveFile(data, name, type) {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 $('dl').onclick = () => { saveFile(profileBytes(), fileName(), 'application/vnd.iccprofile'); $('dlName').textContent = `Downloaded ${fileName()}. Now install it (step 6).`; };
-$('inst').onclick = () => { saveFile(Installer.script(profileBytes(), fileName()), 'Install Calibrue profile.cmd', 'application/octet-stream'); $('dlName').textContent = 'Downloaded the installer. Open it and allow it.'; };
+$('inst').onclick = () => { saveFile(Installer.script(profileBytes(), fileName(), cal.screen), `Install Calibrue profile (${Store.screenTag(cal.screen) || 'screen'}).cmd`, 'application/octet-stream'); $('dlName').textContent = 'Downloaded the installer. Open it and allow it.'; };
 </script>
 </body>
 </html>
