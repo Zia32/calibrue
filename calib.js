@@ -171,6 +171,34 @@
     });
   }
 
+  // Multi-level anchoring. greys: [{F, v}] grey nulls (light F at code v) at several levels.
+  // At each level, the gamma shift that brings the average of the channel curves onto grey.
+  function anchorShifts(curves, greys, chans = ['red', 'green', 'blue']) {
+    return greys.filter(q => q.F > 0.02 && q.F < 0.98 && q.v > 1 && q.v < 254).map(q => {
+      const gGrey = Math.log(q.F) / Math.log(q.v / 255);
+      const gChan = chans.reduce((s, c) => s + Math.log(q.F) / Math.log(curveV(curves[c], q.F) / 255), 0) / chans.length;
+      return { F: q.F, v: q.v, gGrey, gChan, d: gGrey - gChan };
+    }).sort((a, b) => a.F - b.F);
+  }
+  // Shift each point by the anchor shift interpolated in log light (flat beyond the end anchors).
+  function shiftGammaAt(pts, anchors) {
+    if (!anchors.length) return pts.map(p => ({ ...p }));
+    const dAt = F => {
+      const x = Math.log(F), A = anchors;
+      if (x <= Math.log(A[0].F)) return A[0].d;
+      for (let i = 1; i < A.length; i++) {
+        const x0 = Math.log(A[i - 1].F), x1 = Math.log(A[i].F);
+        if (x <= x1) return A[i - 1].d + (A[i].d - A[i - 1].d) * (x - x0) / (x1 - x0);
+      }
+      return A[A.length - 1].d;
+    };
+    return pts.map(p => {
+      if (!(p.F > 0 && p.F < 1 && p.v > 0 && p.v < 255)) return { ...p };
+      const g = Math.log(p.F) / Math.log(p.v / 255) + dAt(p.F);
+      return { ...p, v: 255 * p.F ** (1 / g) };
+    });
+  }
+
   // After installing a profile, the grey null showed effective gamma gAfter. Feed each input
   // through x → x^(target/gAfter) before the old ramp, so the screen lands on the target.
   function refineRamps(ramps, gAfter, target = 2.2) {
@@ -235,6 +263,16 @@
     const k = Math.max(r, g, b);
     return { red: r / k, green: g / k, blue: b / k };
   }
+  // The stored white setting → gains: a measured match (w.gains, from Match two screens) with
+  // the by-eye sliders (t, m) on top. null when nothing is changed.
+  function whiteOf(w) {
+    if (!w) return null;
+    const base = w.gains || { red: 1, green: 1, blue: 1 }, eye = (w.t || w.m) ? whiteGains(w.t, w.m) : { red: 1, green: 1, blue: 1 };
+    const g = { red: base.red * eye.red, green: base.green * eye.green, blue: base.blue * eye.blue };
+    const k = Math.max(g.red, g.green, g.blue);
+    if (!(k > 0) || [g.red, g.green, g.blue].every(x => Math.abs(x / k - 1) < 1e-4)) return null;
+    return { red: g.red / k, green: g.green / k, blue: g.blue / k };
+  }
   // Scale each channel's ramp. Scaling the output level by g scales the light by g^γ at every
   // level (light ∝ level^γ), so greys keep the white's new tint all the way down.
   function applyGains(ramps, gains) {
@@ -265,6 +303,6 @@
   // Perceived lightness L* (CIE) of a relative light level, for judging errors as the eye does.
   const Lstar = Y => Y > 216 / 24389 ? 116 * Math.cbrt(Y) - 16 : Y * 24389 / 27;
 
-  const api = { refineRampsCurve, Lstar, whiteGains, applyGains, lockstep, measureCurves, shiftGamma, refineRamps, fitNull, findNull, fractionAt, PLAN, measureCurve, smoothModel, curveF, curveV, ramp, gammaHalf };
+  const api = { whiteOf, anchorShifts, shiftGammaAt, refineRampsCurve, Lstar, whiteGains, applyGains, lockstep, measureCurves, shiftGamma, refineRamps, fitNull, findNull, fractionAt, PLAN, measureCurve, smoothModel, curveF, curveV, ramp, gammaHalf };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Calib = api;
 })(typeof window !== 'undefined' ? window : globalThis);

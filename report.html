@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-8">
+<meta name="calibrue-build" content="2026.11.02-9">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="manifest" href="manifest-laptop.webmanifest">
+<meta name="theme-color" content="#121619">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Calibrue">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <title>Calibrue · Report</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
@@ -51,9 +59,24 @@ td.num{font-family:var(--mono);white-space:nowrap}
 .unigrid .warn{border-color:var(--warn)}
 .unigrid b{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .unigrid span{font-family:var(--mono)}
+.health{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
+@media (max-width:560px){.health{grid-template-columns:1fr}}
+.score{display:flex;flex-direction:column;align-items:flex-start}
+.score b{font-family:var(--mono);font-size:52px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.score span{font-size:13px;color:var(--muted)}
+.parts{display:flex;flex-direction:column;gap:8px;font-size:13.5px}
+.part{display:grid;grid-template-columns:130px 1fr 52px;gap:10px;align-items:center}
+.part .bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.part .bar i{display:block;height:100%;background:var(--good);border-radius:4px}
+.part .bar i.mid{background:var(--warn)}
+.part .num{font-family:var(--mono);text-align:right;color:var(--muted)}
+.part.na{color:var(--muted)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+button.ghost{color:var(--accent);background:transparent}
 button{font:inherit;font-size:14px;font-weight:600;color:var(--on-accent);background:var(--accent);border:1px solid var(--accent);border-radius:8px;padding:8px 12px;cursor:pointer}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media print{body{background:#fff;color:#000;padding:0}section{break-inside:avoid;border-color:#ccc}button,.noprint{display:none!important}}
+.langsw a,[data-lang-switch] a{color:inherit}
 </style>
 </head>
 <body>
@@ -63,7 +86,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       <h1>Calibration report</h1>
       <p class="sub" id="meta"></p>
     </div>
-    <div class="noprint"><button id="print" type="button">Print or save as PDF</button></div>
+    <div class="noprint"><span class="sub" data-lang-switch></span> <button id="print" type="button">Print or save as PDF</button></div>
   </header>
 
   <section id="none" hidden>
@@ -72,6 +95,15 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
   <div id="body" hidden>
   <div style="display:flex;flex-direction:column;gap:16px">
+    <section id="health" hidden>
+      <h2>Display health</h2>
+      <div class="health">
+        <div class="score"><b id="hScore">–</b><span id="hWord">out of 100</span></div>
+        <div class="parts" id="hParts"></div>
+      </div>
+      <p class="sub" id="hNote"></p>
+      <div class="actions noprint"><button id="remind" type="button" class="ghost">Add monthly reminder to calendar</button><span class="sub" id="remindNote"></span></div>
+    </section>
     <section>
       <h2>Result</h2>
       <div class="verdict">
@@ -115,9 +147,9 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   </div>
 </main>
 
-<script src="store.js?v=2026.11.02-8"></script>
-<script src="calib.js?v=2026.11.02-8"></script>
-<script src="icc.js?v=2026.11.02-8"></script>
+<script src="store.js?v=2026.11.02-9"></script>
+<script src="calib.js?v=2026.11.02-9"></script>
+<script src="icc.js?v=2026.11.02-9"></script>
 <script>
 const $ = id => document.getElementById(id);
 const BUILD = document.querySelector('meta[name=calibrue-build]').content;
@@ -182,7 +214,12 @@ else {
     for (const p of rep.patterns.rows) row('&nbsp;&nbsp;' + p.pattern, `v ${p.v} · gamma ${p.gamma}`, '', null);
   }
   if (rep.stability) row('Stability', `${rep.stability.drift >= 0 ? '+' : ''}${rep.stability.drift} levels`, 'Grey reference measured again at the end; the screen should not drift (limit 1 level).', Math.abs(rep.stability.drift) <= 1);
-  if (rep.rawGamma) row('Colour curves', `R ${rep.rawGamma.red} · G ${rep.rawGamma.green} · B ${rep.rawGamma.blue}`, `Measured together; shifted by ${rep.anchorShift >= 0 ? '+' : ''}${rep.anchorShift} to match the grey result.`, null);
+  const sg = x => `${x >= 0 ? '+' : ''}${x}`;
+  if (rep.rawGamma) row('Colour curves', `R ${rep.rawGamma.red} · G ${rep.rawGamma.green} · B ${rep.rawGamma.blue}`,
+    rep.anchors && rep.anchors.length > 1
+      ? `Measured together; anchored to grey at ${rep.anchors.map(a => `${Math.round(a.light)}% (${sg(a.shift)})`).join(', ')} light.`
+      : `Measured together; shifted by ${sg(rep.anchorShift)} to match the grey result.`, null);
+  if (rep.anchors && rep.anchors.length > 1) row('Grey reference', rep.anchors.map(a => a.greyGamma.toFixed(2)).join(' · '), `Gamma of grey at ${rep.anchors.map(a => Math.round(a.light) + '%').join(', ')} light before the profile.`, null);
   if (cal.curves && cal.curves.red) {
     let spread = 0; cal.curves.red.forEach((p, i) => { const vs = ['red', 'green', 'blue'].map(c => cal.curves[c][i] && cal.curves[c][i].v); if (vs.every(Number.isFinite)) spread = Math.max(spread, Math.max(...vs) - Math.min(...vs)); });
     row('Grey balance', `${spread.toFixed(1)} levels`, 'Largest red/green/blue difference at equal light. Under 2 levels shows no visible tint; the profile corrects it either way.', spread < 2);
@@ -190,7 +227,8 @@ else {
   if (rep.minutes) row('Duration', `${rep.minutes} min`, '', null);
   try {
     const w = JSON.parse(localStorage.getItem('calibrue.white') || '{}');
-    if (w.t || w.m) { const g = Calib.whiteGains(w.t, w.m); row('White point', `R ${Math.round(g.red * 100)}% · G ${Math.round(g.green * 100)}% · B ${Math.round(g.blue * 100)}%`, 'Set by eye with Match the white.', null); }
+    const g = Calib.whiteOf(w);
+    if (g) row('White point', `R ${Math.round(g.red * 100)}% · G ${Math.round(g.green * 100)}% · B ${Math.round(g.blue * 100)}%`, w.gains ? `Matched to another screen with the iPhone camera${w.t || w.m ? ', then adjusted by eye' : ''}.` : 'Set by eye with Match the white.', null);
     else row('White point', 'unchanged', "The screen's own white.", null);
   } catch (e) {}
   try {
@@ -212,7 +250,7 @@ else {
   $('screenChecks').hidden = false;
   if (!cal || !cal.ramps) { // checks only, no calibration yet
     $('body').hidden = false;
-    document.querySelectorAll('#body section').forEach(sec => { if (sec.id !== 'screenChecks') sec.hidden = true; });
+    document.querySelectorAll('#body section').forEach(sec => { if (sec.id !== 'screenChecks' && sec.id !== 'health') sec.hidden = true; });
   }
   if (ch.shadow) {
     const s = ch.shadow, good = g => g === 'excellent' || g === 'good';
@@ -232,6 +270,60 @@ else {
       <p class="sub" style="margin-top:8px">Tint: red and blue relative to green, compared with the centre (positive R = warmer, positive B = cooler); above 3% is usually visible. γ: gamma at that spot; differences above 0.05 are usually visible. Brightness differences are not measured, because the phone camera adjusts its exposure to each spot.${u.wbLocked ? '' : ' White balance could not be locked, so tint values are rough.'} Measured ${fmtDate(u.when)}.</p>`;
   }
 })();
+
+// ---- display health: one score from what has been measured, weighted; missing parts don't count ----
+(function () {
+  let ch = {}; try { ch = JSON.parse(localStorage.getItem('calibrue.checks') || '{}') || {}; } catch (e) {}
+  const has = cal && cal.ramps;
+  if (!has && !ch.shadow && !ch.uniformity) return;
+  const lin = (x, good, bad) => Math.max(0, Math.min(1, (bad - x) / (bad - good)));
+  const vers = has ? cal.verifications || [] : [], last = vers[vers.length - 1];
+  const parts = [];
+  // Tone: after the profile if verified; otherwise how far the uncalibrated screen is from 2.2
+  if (last) parts.push({ name: 'Tone accuracy', w: 40, v: lin(last.worstDL, 0.5, 3), txt: `ΔL* ${last.worstDL.toFixed(2)}` });
+  else if (has && Number.isFinite(cal.greyGamma)) { const dL = Math.abs(Calib.Lstar(0.5) - Calib.Lstar(0.5 ** (cal.greyGamma / 2.2))); parts.push({ name: 'Tone accuracy', w: 40, v: lin(dL, 0.5, 3), txt: `ΔL* ${dL.toFixed(1)}, not verified` }); }
+  if (has && cal.curves && cal.curves.red) {
+    let spread = 0; cal.curves.red.forEach((p, i) => { const vs = ['red', 'green', 'blue'].map(c => cal.curves[c][i] && cal.curves[c][i].v); if (vs.every(Number.isFinite)) spread = Math.max(spread, Math.max(...vs) - Math.min(...vs)); });
+    parts.push({ name: 'Grey balance', w: 15, v: last && last.pass ? 1 : lin(spread, 2, 8), txt: last && last.pass ? 'corrected' : `${spread.toFixed(1)} levels` });
+  }
+  if (ch.shadow) { const g = { excellent: 1, good: 0.75, fair: 0.4 }; const v = ((g[ch.shadow.shadowGrade] || 0) + (g[ch.shadow.highlightGrade] || 0)) / 2;
+    parts.push({ name: 'Shadow & highlight', w: 15, v, txt: `${ch.shadow.shadowGrade} / ${ch.shadow.highlightGrade}` }); }
+  if (ch.uniformity) { const u = ch.uniformity, v = (lin(u.worstTint, 2, 10) + lin(u.worstTone, 0.03, 0.15)) / 2;
+    parts.push({ name: 'Uniformity', w: 20, v, txt: `${u.worstTint}% · γ ${u.worstTone.toFixed(2)}` }); }
+  const lastWhen = last ? last.when : has ? cal.when : null;
+  if (lastWhen) { const days = (Date.now() - new Date(lastWhen)) / 864e5; parts.push({ name: 'Up to date', w: 10, v: lin(days, 31, 120), txt: days < 1 ? 'today' : `${Math.round(days)} days` }); }
+  const W = parts.reduce((s, p) => s + p.w, 0), score = Math.round(parts.reduce((s, p) => s + p.w * p.v, 0) / W * 100);
+  $('health').hidden = false;
+  $('hScore').textContent = score;
+  $('hWord').textContent = `out of 100 · ${score >= 90 ? 'excellent' : score >= 75 ? 'good' : score >= 50 ? 'fair' : 'needs attention'}`;
+  const all = ['Tone accuracy', 'Grey balance', 'Shadow & highlight', 'Uniformity', 'Up to date'];
+  $('hParts').innerHTML = all.map(n => { const p = parts.find(q => q.name === n);
+    if (!p) return `<div class="part na"><span>${n}</span><span class="sub">not measured</span><span></span></div>`;
+    return `<div class="part"><span>${n}</span><div class="bar" role="img" aria-label="${Math.round(p.v * 100)}%"><i class="${p.v < 0.75 ? 'mid' : ''}" style="width:${Math.max(3, p.v * 100)}%"></i></div><span class="num">${p.txt}</span></div>`; }).join('');
+  const missing = all.filter(n => !parts.find(p => p.name === n));
+  $('hNote').textContent = (missing.length ? `Based on what was measured; ${missing.join(', ').toLowerCase()} not included. ` : '') + 'Tone accuracy counts most. Uniformity and shadow detail are properties of the panel; calibration does not change them.';
+
+  // ---- calendar reminder (.ics): monthly, from 30 days after the last calibration or verification ----
+  $('remind').onclick = () => {
+    const start = new Date(Math.max(Date.now(), lastWhen ? +new Date(lastWhen) : 0) + 30 * 864e5);
+    const p2 = n => String(n).padStart(2, '0');
+    const local = d => `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}T100000`;
+    const utc = d => d.toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+    const url = new URL('laptop.html', location.href).href;
+    const screen = has ? Store.screenName(cal.screen) : 'screen';
+    const esc = t => t.replace(/[\\;,]/g, m => '\\' + m);
+    const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Calibrue//Reminder//EN', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
+      `UID:calibrue-${Date.now()}@calibrue.com`, `DTSTAMP:${utc(new Date())}`, `DTSTART:${local(start)}`, 'DURATION:PT15M', 'RRULE:FREQ=MONTHLY;COUNT=24',
+      `SUMMARY:${esc('Calibrue: verify the ' + screen)}`,
+      `DESCRIPTION:${esc('Screens drift over time. Open ' + url + ' on the laptop and pair the iPhone, then tap Verify (1 minute). If it is off target, tap Calibrate.')}`,
+      `URL:${url}`, 'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Verify your screen with Calibrue', 'TRIGGER:PT0M', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n') + '\r\n';
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' })); a.download = 'calibrue-reminder.ics'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    $('remindNote').textContent = `Opens in your calendar app; first reminder ${start.toLocaleDateString([], { dateStyle: 'medium' })}, then monthly.`;
+  };
+})();
 </script>
+<script src="i18n.js?v=2026.11.02-9"></script>
+<script>if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});</script>
 </body>
 </html>

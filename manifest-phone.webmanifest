@@ -1,0 +1,17 @@
+{
+  "name": "Calibrue (iPhone)",
+  "short_name": "Calibrue",
+  "description": "Calibrate a laptop screen with the iPhone camera.",
+  "id": "./phone.html",
+  "start_url": "./phone.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#121619",
+  "theme_color": "#121619",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

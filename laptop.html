@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-8">
+<meta name="calibrue-build" content="2026.11.02-9">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="manifest" href="manifest-laptop.webmanifest">
+<meta name="theme-color" content="#121619">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Calibrue">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <title>Calibrue · Laptop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
@@ -58,6 +66,7 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-r
 button.dl{font-size:15px;padding:10px 14px}
 .plink{font-weight:600;color:var(--accent);text-decoration:none;font-size:13px}
 .plink:hover,.plink:focus-visible{text-decoration:underline}
+.langsw a,[data-lang-switch] a{color:inherit}
 </style>
 </head>
 <body>
@@ -67,7 +76,7 @@ button.dl{font-size:15px;padding:10px 14px}
 <div id="panel">
   <div>
     <h1>Calibrue · laptop</h1>
-    <p class="sub">Press the iPhone's rear camera on the centre square. <span id="build"></span></p>
+    <p class="sub">Press the iPhone's rear camera on the centre square. <span id="build"></span> <span class="langsw" data-lang-switch></span></p>
   </div>
 
   <div class="pair">
@@ -179,13 +188,13 @@ button.dl{font-size:15px;padding:10px 14px}
   </div>
 </div>
 
-<script src="store.js?v=2026.11.02-8"></script>
-<script src="calib.js?v=2026.11.02-8"></script>
-<script src="icc.js?v=2026.11.02-8"></script>
-<script src="install.js?v=2026.11.02-8"></script>
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-8"></script>
-<script src="lib/qrcode-1.0.0.min.js?v=2026.11.02-8"></script>
-<script src="link.js?v=2026.11.02-8"></script>
+<script src="store.js?v=2026.11.02-9"></script>
+<script src="calib.js?v=2026.11.02-9"></script>
+<script src="icc.js?v=2026.11.02-9"></script>
+<script src="install.js?v=2026.11.02-9"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-9"></script>
+<script src="lib/qrcode-1.0.0.min.js?v=2026.11.02-9"></script>
+<script src="link.js?v=2026.11.02-9"></script>
 <script>
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d', { alpha: false });
@@ -352,6 +361,22 @@ function onMsg(m) {
     send({ type: 'check-saved' });
     return;
   }
+  if (m && m.type === 'white-match' && m.levels && calibration) { // Match two screens
+    let w = {}; try { w = JSON.parse(localStorage.getItem('calibrue.white') || '{}') || {}; } catch (e) {}
+    if (w.matchWhen !== m.when) {
+      // The phone found the input levels that make this screen's white match, drawn through the
+      // installed profile. Assuming that profile is this calibration (with the current white),
+      // the output it produced is old gain × ramp(level): that ratio is the new gain.
+      const old = Calib.whiteOf(w) || { red: 1, green: 1, blue: 1 }, g = {};
+      const at = (r, x) => { x = Math.max(0, Math.min(255, x)); const i = Math.min(254, Math.floor(x)), f = x - i; return r[i] * (1 - f) + r[i + 1] * f; };
+      for (const c of ['red', 'green', 'blue']) g[c] = old[c] * at(calibration.ramps[c], m.levels[c]) / calibration.ramps[c][255];
+      const k = Math.max(g.red, g.green, g.blue); for (const c in g) g[c] /= k;
+      try { localStorage.setItem('calibrue.white', JSON.stringify({ t: 0, m: 0, gains: g, matchWhen: m.when })); } catch (e) {}
+      saveCal({ ...calibration, whiteRev: (calibration.whiteRev || 0) + 1 }); showDone('white');
+    }
+    send({ type: 'check-saved' });
+    return;
+  }
   if (m && m.type === 'verify-result' && calibration) { // kept for the report
     if (!(calibration.verifications || []).some(v => v.when === m.when)) saveCal({ ...calibration, verifications: [...(calibration.verifications || []), { ...m, profile: profName() }] });
     send({ type: 'verify-saved' });
@@ -431,7 +456,9 @@ function showDone(kind) {
   $('dTitle').textContent = (kind === 'refined' ? 'Refined profile ready' : 'Profile ready') + (calibration.screen ? ` · ${Store.screenName(calibration.screen)}` : '');
   const from = calibration.refinedFrom ? calibration.refinedFrom : calibration.greyGamma;
   $('dGamma').innerHTML = Number.isFinite(from) ? `${from.toFixed(2)} → 2.20<small> gamma ${kind === 'refined' ? 'measured with the old profile' : 'measured'} → target</small>` : '';
-  $('dNote').textContent = kind === 'refined'
+  $('dNote').textContent = kind === 'white'
+    ? 'White matched to your other screen. Download this profile, remove the old Calibrue profile in colorcpl, add this one. Its white now matches the other screen.'
+    : kind === 'refined'
     ? 'Verification was slightly off, so this profile adds a small correction on top. Download it, remove the old Calibrue profile in colorcpl, add this one, then Verify again.'
     : 'Your measurement is saved on this laptop. Download the profile and install it.';
   $('dFile').textContent = profName(); $('dFile2').textContent = profName();
@@ -442,7 +469,7 @@ $('dEdidIn').addEventListener('input', readEdid);
 try { const e = localStorage.getItem('calibrue.edid'); if (e) $('dEdidIn').value = e; } catch (e) {}
 readEdid();
 function profileBytes() {
-  let wg = null; try { const w = JSON.parse(localStorage.getItem('calibrue.white') || '{}'); if (w.t || w.m) wg = Calib.whiteGains(w.t, w.m); } catch (e) {}
+  let wg = null; try { wg = Calib.whiteOf(JSON.parse(localStorage.getItem('calibrue.white') || '{}')); } catch (e) {}
   return ICC.build({ ramps: Calib.applyGains(calibration.ramps, wg), primaries: edidPrimaries || ICC.SRGB,
     name: `Calibrue ${Store.screenTag(calibration.screen) ? Store.screenTag(calibration.screen) + ' ' : ''}${dayOf(calibration.when)} gamma 2.2${calibration.refinements ? ' r' + calibration.refinements : ''}`, copyright: 'Created with Calibrue (zia32.github.io/calibrue)' });
 }
@@ -511,5 +538,7 @@ window.visualViewport?.addEventListener('resize', checkZoom); setInterval(checkZ
 document.addEventListener('fullscreenchange', resize);
 resize(); syncUI();
 </script>
+<script src="i18n.js?v=2026.11.02-9"></script>
+<script>if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});</script>
 </body>
 </html>

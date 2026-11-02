@@ -3,6 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="manifest" href="manifest-phone.webmanifest">
+<meta name="theme-color" content="#121619">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Calibrue">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <title>Calibrue</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap">
 <style>
@@ -19,18 +27,23 @@ a.card{display:flex;flex-direction:column;gap:6px;padding:18px;border:1px solid 
 a.card:hover,a.card:focus-visible{border-color:var(--accent);outline:none}
 a.card strong{font-size:18px}
 a.card span{color:var(--muted);font-size:14px}
+.langsw a,[data-lang-switch] a{color:inherit}
 </style>
 </head>
 <body>
 <main>
   <h1>Calibrue</h1>
+  <p data-lang-switch></p>
   <p>Open the laptop page on the Windows laptop, then scan its QR code with the iPhone camera to pair.</p>
   <div class="cards">
     <a class="card" href="laptop.html"><strong>Laptop: patch display</strong><span>Shows the flickering test patch.</span></a>
     <a class="card" href="phone.html"><strong>iPhone: flicker sensor</strong><span>Reads the patch with the camera.</span></a>
     <a class="card" href="profile.html"><strong>Laptop: Windows profile</strong><span>Turns the measurement into an .icc file.</span></a>
+    <a class="card" href="patterns.html"><strong>Test patterns</strong><span>Full-screen patterns to check any screen by eye.</span></a>
     <a class="card" href="report.html"><strong>Laptop: calibration report</strong><span>Before and after, every check, history.</span></a>
   </div>
 </main>
+<script src="i18n.js?v=2026.11.02-9"></script>
+<script>if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});</script>
 </body>
 </html>

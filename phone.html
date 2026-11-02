@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-8">
+<meta name="calibrue-build" content="2026.11.02-9">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="manifest" href="manifest-phone.webmanifest">
+<meta name="theme-color" content="#121619">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Calibrue">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <title>Calibrue · iPhone</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
@@ -72,13 +80,14 @@ details.adv{display:flex;flex-direction:column;gap:14px}
 details.adv>summary{cursor:pointer;font-size:13px;color:var(--muted);padding:6px 2px}
 details.adv[open]>summary{margin-bottom:14px}
 details.adv>section+section{margin-top:14px}
+.langsw a,[data-lang-switch] a{color:inherit}
 </style>
 </head>
 <body>
 <main>
   <header>
     <h1>Calibrue · iPhone</h1>
-    <p class="sub">Rear camera pressed flat on the laptop's centre square, screen facing you. <span id="build"></span></p>
+    <p class="sub">Rear camera pressed flat on the laptop's centre square, screen facing you. <span id="build"></span> <span class="langsw" data-lang-switch></span></p>
   </header>
 
   <section>
@@ -104,7 +113,7 @@ details.adv>section+section{margin-top:14px}
       <li data-k="signal">Signal check<small></small></li>
       <li data-k="pattern">Pattern check<small></small></li>
       <li data-k="curves">Colour curves (R, G, B together)<small></small></li>
-      <li data-k="stability">Stability check<small></small></li>
+      <li data-k="stability">Stability &amp; grey reference<small></small></li>
       <li data-k="finish">Build profile<small></small></li>
     </ul>
     <progress id="goProg" value="0" max="1" hidden></progress>
@@ -126,6 +135,7 @@ details.adv>section+section{margin-top:14px}
     <div class="actions">
       <button id="chkShadow" type="button" disabled>Shadow &amp; highlight detail (1 min)</button>
       <button id="chkUni" type="button" disabled>Uniformity, 5 spots (3 min)</button>
+      <button id="chkMatch" type="button" disabled>Match white to another screen (2 min)</button>
     </div>
     <button class="primary" id="chkNext" type="button" hidden>The phone is on the new square: continue</button>
     <div class="actions"><button id="chkStop" type="button" hidden>Stop</button></div>
@@ -240,10 +250,10 @@ details.adv>section+section{margin-top:14px}
   </section>
 </main>
 
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-8"></script>
-<script src="link.js?v=2026.11.02-8"></script>
-<script src="analysis.js?v=2026.11.02-8"></script>
-<script src="calib.js?v=2026.11.02-8"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-9"></script>
+<script src="link.js?v=2026.11.02-9"></script>
+<script src="analysis.js?v=2026.11.02-9"></script>
+<script src="calib.js?v=2026.11.02-9"></script>
 <script>
 const $ = id => document.getElementById(id);
 const video = $('vid');
@@ -490,7 +500,7 @@ function refreshAuto(msg = true) {
   const ready = !!link && !!stream && !auto;
   $('autoNull').disabled = !ready; $('autoStep').disabled = !ready; $('autoPat').disabled = !ready; $('autoStop').hidden = !auto || !!auto.kind;
   $('calRun').disabled = !ready; $('calStop').hidden = !auto || auto.kind !== 'cal';
-  $('go').disabled = !link || !!auto; $('verify').disabled = !link || !!auto; $('chkShadow').disabled = !link || !!auto; $('chkUni').disabled = !link || !!auto; $('goStop').hidden = !auto || auto.kind !== 'full'; $('chkStop').hidden = !auto || auto.kind !== 'check';
+  $('go').disabled = !link || !!auto; $('verify').disabled = !link || !!auto; $('chkShadow').disabled = !link || !!auto; $('chkUni').disabled = !link || !!auto; $('chkMatch').disabled = !link || !!auto; $('goStop').hidden = !auto || auto.kind !== 'full'; $('chkStop').hidden = !auto || auto.kind !== 'check';
   $('go').textContent = auto && auto.kind === 'full' ? 'Calibrating…' : 'Calibrate';
   if (!auto && msg && $('goMsg').textContent.startsWith('Pair')) $('goMsg').textContent = link ? 'Ready. Read the four points above, then tap Calibrate.' : 'Pair with the laptop above, then tap Calibrate.';
   if (!auto && msg) $('autoMsg').textContent = !link ? 'Pair with the laptop first.' : !stream ? 'Start the camera.' : 'Press the phone flat on the square, then pick a test.';
@@ -779,7 +789,7 @@ async function runFull() {
   STAGES.forEach(k => setStage(k, 'pending', ''));
   $('goResult').hidden = true;
   const prog = $('goProg'); prog.hidden = false;
-  const total = 1 + PATTERNS.length + Calib.PLAN.length + 2; let done = 0; const t0 = Date.now();
+  const total = 1 + PATTERNS.length + Calib.PLAN.length + 4; let done = 0; const t0 = Date.now();
   const tick = () => { prog.value = ++done / total; };
   const left = () => done > 2 ? ` About ${Math.max(1, Math.round((Date.now() - t0) / done * (total - done) / 60000))} min left.` : '';
   const report = { test: 'full', started: new Date().toISOString() };
@@ -832,11 +842,28 @@ async function runFull() {
     const greyEndV = again.v0 + (greyV - chosen.v);
     const greyAvgV = (greyV + greyEndV) / 2, greyGammaAvg = Math.log(0.5) / Math.log(greyAvgV / 255);
 
+    // 3c. Grey at 25% and 75% light too, built on the 50% point (as in Verify), so the channel
+    // curves are anchored to grey across the range, not only in the middle.
+    const greys = [{ F: 0.5, v: greyAvgV }];
+    try {
+      const n = Math.round(again.v0), Fn = Calib.fractionAt({ v: again.v0, F: 0.5 }, n);
+      say(`Grey reference: dark grey.${left()}`);
+      const q = await greyNullAB(chosen.pat, 0, n, 255 * (Fn / 2) ** (1 / 2.2)); tick();
+      say(`Grey reference: light grey.${left()}`);
+      const t3 = await greyNullAB(chosen.pat, n, 255, 255 * ((Fn + 1) / 2) ** (1 / 2.2)); tick();
+      greys.push({ F: Fn / 2, v: q.v0 }, { F: (Fn + 1) / 2, v: t3.v0 });
+    } catch (e) { if (auto && auto.stop) throw e; done += 2; }
+
     // 4. Anchor the channel curves to the grey result, build ramps, hand over to the laptop.
     stage = 'finish'; setStage('finish', 'active'); say('Building the profile…');
     const raw = Object.fromEntries(['red', 'green', 'blue'].map(c => [c, Calib.gammaHalf(curves[c])]));
     const shift = greyGammaAvg - (raw.red + raw.green + raw.blue) / 3;
-    const anchored = Object.fromEntries(['red', 'green', 'blue'].map(c => [c, Calib.shiftGamma(curves[c], shift)]));
+    // per-level shifts; a level that disagrees wildly with the middle one is a bad reading, dropped
+    let anchors = Calib.anchorShifts(curves, greys);
+    const mid = anchors.find(a => a.F === 0.5);
+    anchors = mid ? anchors.filter(a => Math.abs(a.d - mid.d) <= 0.25) : [];
+    const anchored = Object.fromEntries(['red', 'green', 'blue'].map(c => [c, anchors.length > 1 ? Calib.shiftGammaAt(curves[c], anchors) : Calib.shiftGamma(curves[c], shift)]));
+    report.anchors = anchors.map(a => ({ light: +(a.F * 100).toFixed(1), greyGamma: +a.gGrey.toFixed(3), colourGamma: +a.gChan.toFixed(3), shift: +a.d.toFixed(3) }));
     const ramps = Object.fromEntries(['red', 'green', 'blue'].map(c => [c, Calib.ramp(anchored[c])]));
     const gamma = Object.fromEntries(['red', 'green', 'blue'].map(c => [c, +Calib.gammaHalf(anchored[c]).toFixed(3)]));
     const slim = c => anchored[c].map(p => ({ F: +p.F.toFixed(5), v: +p.v.toFixed(2) }));
@@ -942,8 +969,8 @@ async function runShadow() {
 }
 // Tint (white with white balance locked) and tone (grey null) at the centre and 4 corners.
 let nextResolve = null;
-function waitForNext(text) {
-  chkSay(text); $('chkNext').hidden = false;
+function waitForNext(text, button = 'The phone is on the new square: continue') {
+  chkSay(text); $('chkNext').textContent = button; $('chkNext').hidden = false;
   return new Promise((res, rej) => {
     const chk = setInterval(() => { if (auto && auto.stop) { clearInterval(chk); nextResolve = null; rej(new Error('Stopped.')); } }, 300);
     nextResolve = () => { clearInterval(chk); res(); };
@@ -1004,6 +1031,69 @@ async function runUniformity() {
   try { if (wbLocked) await track.applyConstraints({ advanced: [{ whiteBalanceMode: 'continuous' }] }); } catch (e) {}
   auto = null; refreshAuto(false);
 }
+// ---- Match two screens: make this laptop's white look like another screen's white ----
+// White balance (and exposure, where the phone allows it) is locked on the other screen, so the
+// camera's colour ratios compare the two directly. The laptop then shows white with each channel
+// turned down until its ratios match; the result goes into the profile as channel gains.
+async function runMatch() {
+  auto = { stop: false, kind: 'check' }; refreshAuto();
+  $('chkBig').hidden = true; $('chkGrid').hidden = true;
+  let locked = false;
+  const read = async () => {
+    await sleep(1200); const s0 = seq; await sleep(1800);
+    const s = buf.filter(p => p.seq > s0); if (s.length < 10) throw new Error('Too few camera frames. Keep the page open and try again.');
+    const m = k => s.reduce((a, p) => a + p[k], 0) / s.length;
+    const r = { r: m('r'), g: m('g'), b: m('b') };
+    if (Math.max(r.r, r.g, r.b) > 250) chkSay('The camera is close to clipping; results may be rough.');
+    return { rg: r.r / r.g, bg: r.b / r.g, raw: r };
+  };
+  const pct = x => `${x >= 0 ? '+' : ''}${(x * 100).toFixed(1)}%`;
+  try {
+    await ensureCamera();
+    await command({ mode: 'static', ch: 'grey', v: 0, ped: 0, pos: null, run: false }); // laptop dark while the other screen is read
+    await waitForNext('On the other screen (the one whose white you like), open calibrue.com/patterns.html, choose Uniform white, and press the phone flat on it. Then tap continue.', 'The phone is on the other screen: continue');
+    try { await track.applyConstraints({ advanced: [{ whiteBalanceMode: 'manual' }] }); locked = true; } catch (e) {}
+    try { await track.applyConstraints({ advanced: [{ exposureMode: 'manual' }] }); } catch (e) {}
+    chkSay('Reading the other screen\'s white…');
+    const ref = await read();
+    let L = { red: 255, green: 255, blue: 255 };
+    await command({ mode: 'multi', multi: { red: { v: 255 }, green: { v: 255 }, blue: { v: 255 } }, pos: null, run: false });
+    await waitForNext('Now press the phone on the white square on the laptop. Then tap continue.', 'The phone is on the laptop: continue');
+    let full = null, last = null;
+    for (let it = 0; it < 5; it++) {
+      chkSay(it ? `Adjusting the laptop white, step ${it}…` : 'Reading the laptop white…');
+      await command({ mode: 'multi', multi: { red: { v: L.red }, green: { v: L.green }, blue: { v: L.blue } }, pos: null, run: false });
+      last = await read(); if (!full) full = last;
+      // light errors (camera values follow light^(1/2.2)); red and blue relative to green
+      const fr = (ref.rg / last.rg) ** 2.2, fb = (ref.bg / last.bg) ** 2.2;
+      if (it && Math.abs(fr - 1) < 0.01 && Math.abs(fb - 1) < 0.01) break;
+      const f = { red: fr, green: 1, blue: fb }, k = Math.max(f.red, f.green, f.blue);
+      for (const c of ['red', 'green', 'blue']) L[c] = L[c] * (f[c] / k) ** (1 / 2.2);
+      const top = Math.max(L.red, L.green, L.blue); for (const c in L) L[c] = Math.min(255, L[c] * 255 / top);
+      if (it === 0 && Math.abs(fr - 1) < 0.01 && Math.abs(fb - 1) < 0.01) break; // already matching
+    }
+    // the levels are the result (the laptop turns them into profile gains); light is for display
+    const light = Object.fromEntries(['red', 'green', 'blue'].map(c => [c, (L[c] / 255) ** 2.2]));
+    const before = { red: (full.rg / ref.rg) ** 2.2 - 1, blue: (full.bg / ref.bg) ** 2.2 - 1 }, after = { red: (last.rg / ref.rg) ** 2.2 - 1, blue: (last.bg / ref.bg) ** 2.2 - 1 };
+    await command({ mode: 'static', ch: 'grey', v: 255, run: false });
+    const result = { type: 'white-match', when: new Date().toISOString(), levels: { ...L }, light, before, after, wbLocked: locked };
+    lastAuto = { test: 'white-match', ...result };
+    $('chkBig').hidden = false;
+    $('chkBig').innerHTML = `R ${pct(before.red)} · B ${pct(before.blue)} → R ${pct(after.red)} · B ${pct(after.blue)}<small> laptop white vs the other screen, before → after</small>`;
+    const close = Math.abs(before.red) < 0.015 && Math.abs(before.blue) < 0.015;
+    if (close) { chkSay('The two whites already match within 1.5%. Nothing to change.'); }
+    else {
+      const saved = await sendCheck(result);
+      chkSay(`${saved ? 'The laptop made a new profile with the matched white: install it there (it replaces the old one). ' : 'The laptop did not answer. It needs a calibration first (tap Calibrate), and its page must be open. '}White light now red ${Math.round(light.red * 100)}%, green ${Math.round(light.green * 100)}%, blue ${Math.round(light.blue * 100)}%.${locked ? '' : ' White balance could not be locked on this phone, so the match is rough.'} If it still looks slightly off by eye, fine-tune with Match the white on the profile page; it adds to this.`);
+    }
+  } catch (e) { chkSay(e.message); }
+  try { await command({ mode: 'static', ch: 'grey', v: 255, run: false, pos: null }); } catch (x) {}
+  $('chkNext').hidden = true;
+  try { if (locked) await track.applyConstraints({ advanced: [{ whiteBalanceMode: 'continuous' }] }); } catch (e) {}
+  try { await track.applyConstraints({ advanced: [{ exposureMode: 'continuous' }] }); } catch (e) {}
+  auto = null; refreshAuto(false);
+}
+$('chkMatch').onclick = runMatch;
 $('chkShadow').onclick = runShadow;
 $('chkStop').onclick = () => { if (auto) auto.stop = true; };
 $('chkUni').onclick = runUniformity;
@@ -1026,5 +1116,7 @@ $('code').addEventListener('keydown', e => { if (e.key === 'Enter') connect($('c
 $('build').textContent = 'Version ' + document.querySelector('meta[name=calibrue-build]').content + '.';
 refreshAuto();
 </script>
+<script src="i18n.js?v=2026.11.02-9"></script>
+<script>if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});</script>
 </body>
 </html>

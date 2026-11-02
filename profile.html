@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-8">
+<meta name="calibrue-build" content="2026.11.02-9">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="manifest" href="manifest-laptop.webmanifest">
+<meta name="theme-color" content="#121619">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Calibrue">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <title>Calibrue · Profile</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
@@ -62,19 +70,20 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-r
 table{border-collapse:collapse;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
 th{font-family:var(--sans);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;text-align:right;padding:2px 0 4px 18px}
 th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:right;padding:3px 0 3px 18px;border-top:1px solid var(--line)}
+.langsw a,[data-lang-switch] a{color:inherit}
 </style>
 </head>
 <body>
 <main>
   <header>
     <h1>Calibrue · Windows profile</h1>
-    <p class="sub">Turns the iPhone measurement into an .icc profile for this laptop. <span id="build"></span> <a href="laptop.html">Back to the laptop page</a> · <a href="report.html">Calibration report</a></p>
+    <p class="sub">Turns the iPhone measurement into an .icc profile for this laptop. <span id="build"></span> <span class="langsw" data-lang-switch></span> <a href="laptop.html">Back to the laptop page</a> · <a href="report.html">Calibration report</a></p>
   </header>
 
   <section>
     <h2><span class="n">1</span>Measurement</h2>
     <div id="noCal">
-      <p>No measurement on this laptop yet. Open the <a href="laptop.html">laptop page</a>, pair the iPhone, and run <b>Measure tone curves</b> on the phone. The result is saved here automatically.</p>
+      <p>No measurement on this laptop yet. Open the <a href="laptop.html">laptop page</a>, pair the iPhone, and tap <b>Calibrate</b> on the phone. The result is saved here automatically.</p>
     </div>
     <div id="hasCal" hidden>
       <div class="big" id="calGamma"></div>
@@ -154,8 +163,7 @@ th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:righ
     <ol>
       <li>Keep the profile on. Plug in the charger.</li>
       <li>Open the <a href="laptop.html">laptop page</a> and pair the iPhone again.</li>
-      <li>On the phone, run <b>Find null point</b>.</li>
-      <li>Before calibration your screen nulled near v 190 (gamma 2.4). With the profile working it should land near <b>v 186 (gamma 2.2)</b>. Send me the result.</li>
+      <li>On the phone, tap <b>Verify an installed profile</b>. It measures dark, mid and light grey; on target means the profile works. The result goes into the <a href="report.html">report</a>.</li>
     </ol>
   </section>
 </main>
@@ -169,16 +177,16 @@ th:first-child,td:first-child{text-align:left;padding-left:0} td{text-align:righ
     <div class="row"><button id="wExit" type="button">Done</button><span id="wOut2" style="font-size:13px"></span></div>
   </div>
 </div>
-<script src="store.js?v=2026.11.02-8"></script>
-<script src="calib.js?v=2026.11.02-8"></script>
-<script src="icc.js?v=2026.11.02-8"></script>
-<script src="install.js?v=2026.11.02-8"></script>
+<script src="store.js?v=2026.11.02-9"></script>
+<script src="calib.js?v=2026.11.02-9"></script>
+<script src="icc.js?v=2026.11.02-9"></script>
+<script src="install.js?v=2026.11.02-9"></script>
 <script>
 const $ = id => document.getElementById(id);
 $('build').textContent = 'Version ' + document.querySelector('meta[name=calibrue-build]').content + '.';
 let cal = null, primaries = ICC.SRGB;
 var white = { t: 0, m: 0 }; // white-point adjustment, see 'Match the white'
-function gains() { return (white.t || white.m) ? Calib.whiteGains(white.t, white.m) : null; }
+function gains() { return Calib.whiteOf(white); }
 cal = Store.current();
 const ok = cal && cal.ramps && ['red', 'green', 'blue'].every(c => Array.isArray(cal.ramps[c]) && cal.ramps[c].length === 256);
 
@@ -274,17 +282,17 @@ drawPreview();
 // ---- Match the white ----
 try { white = { ...white, ...JSON.parse(localStorage.getItem('calibrue.white') || '{}') }; } catch (e) {}
 function showWhite() {
-  const g = Calib.whiteGains(white.t, white.m);
+  const g = Calib.whiteOf(white) || { red: 1, green: 1, blue: 1 };
   const col = `rgb(${Math.round(255 * g.red)},${Math.round(255 * g.green)},${Math.round(255 * g.blue)})`;
   $('wSwatch').style.background = col; $('wFull').style.background = col;
   ['wT', 'wT2'].forEach(id => $(id).value = white.t); ['wM', 'wM2'].forEach(id => $(id).value = white.m);
-  const txt = (white.t || white.m) ? `Red ${Math.round(g.red * 100)}% · Green ${Math.round(g.green * 100)}% · Blue ${Math.round(g.blue * 100)}%. Included in the profile.` : 'Unchanged: the screen\'s own white.';
+  const txt = Calib.whiteOf(white) ? `Red ${Math.round(g.red * 100)}% · Green ${Math.round(g.green * 100)}% · Blue ${Math.round(g.blue * 100)}%${white.gains ? ' (matched to another screen with the iPhone' + (white.t || white.m ? ', plus your adjustment' : '') + ')' : ''}. Included in the profile.` : 'Unchanged: the screen\'s own white.';
   $('wOut').textContent = txt; $('wOut2').textContent = txt;
   try { localStorage.setItem('calibrue.white', JSON.stringify(white)); } catch (e) {}
   drawPreview();
 }
 for (const [a, b] of [['wT', 'wT2'], ['wM', 'wM2']]) for (const id of [a, b]) $(id).addEventListener('input', e => { white[a === 'wT' ? 't' : 'm'] = +e.target.value; showWhite(); });
-$('wReset').onclick = () => { white = { t: 0, m: 0 }; showWhite(); };
+$('wReset').onclick = () => { white = { t: 0, m: 0 }; showWhite(); }; // also clears a measured match
 $('wFs').onclick = () => { $('wFull').hidden = false; document.documentElement.requestFullscreen?.().catch(() => {}); };
 $('wExit').onclick = () => { $('wFull').hidden = true; if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') $('wFull').hidden = true; });
@@ -303,5 +311,7 @@ function saveFile(data, name, type) {
 $('dl').onclick = () => { saveFile(profileBytes(), fileName(), 'application/vnd.iccprofile'); $('dlName').textContent = `Downloaded ${fileName()}. Now install it (step 6).`; };
 $('inst').onclick = () => { saveFile(Installer.script(profileBytes(), fileName(), cal.screen), `Install Calibrue profile (${Store.screenTag(cal.screen) || 'screen'}).cmd`, 'application/octet-stream'); $('dlName').textContent = 'Downloaded the installer. Open it and allow it.'; };
 </script>
+<script src="i18n.js?v=2026.11.02-9"></script>
+<script>if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});</script>
 </body>
 </html>

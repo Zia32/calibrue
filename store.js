@@ -54,7 +54,7 @@
   }
   const screenName = s => !s ? 'unknown screen' : s.internal ? 'built-in screen' : s.label || `screen ${s.w}×${s.h}`;
   const day = w => { const d = new Date(w); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-  const profileName = c => `calibrue-${c.screen ? screenTag(c.screen) + '-' : ''}${day(c.when)}${c.refinements ? '-r' + c.refinements : ''}.icc`;
+  const profileName = c => `calibrue-${c.screen ? screenTag(c.screen) + '-' : ''}${day(c.when)}${c.refinements ? '-r' + c.refinements : ''}${c.whiteRev ? '-w' + c.whiteRev : ''}.icc`;
 
   root.Store = { history, save, current, use, remove, screenInfo, onScreenChange, screenTag, screenName, profileName, day };
 })(window);
