@@ -43,6 +43,10 @@ The iPhone camera only works on HTTPS pages, so the files must be hosted.
 
 **External monitors:** drag the laptop page onto the monitor and press F for fullscreen there. With the browser's window-management permission ("Identify this screen" in the panel) the page knows the screen's name; calibrations, file names (`calibrue-UP3017-….icc`) and the installer then target that screen. Without it, the installer asks which screen.
 
+**Screen checks** (phone, separate buttons; results go to the report):
+- **Shadow & highlight detail:** steps of 1, 2, 3, 4, 5, 6, 8 … 32 levels above black (and below white) until the camera sees a 1-step flicker with SNR ≥ 5. 1–3 excellent, 4–6 good, 7–12 fair, higher crushed.
+- **Uniformity:** a smaller patch at the centre and 4 corners; you move the phone and tap continue. White balance is locked on the centre white; at each spot it reads the red/green and blue/green ratios (converted to % of light) and runs a grey null for gamma. Brightness is not measured, because the camera's exposure follows each spot.
+
 `profile.html` has **All calibrations** (use an older one or delete it), the details view, EDID tools and **Match the white**: two sliders (warmer/cooler, greener/magenta) to match the laptop's white to another screen by eye. The result scales the three ramps (largest gain stays 1), so greys carry the same tint and peak brightness drops only a few percent. The camera is not used for this because its colour response differs from the eye's between different panel types. The single tests are under **Advanced tools** on the phone.
 
 ## 3. Prepare

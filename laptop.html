@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-7">
+<meta name="calibrue-build" content="2026.11.02-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Calibrue · Laptop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -179,18 +179,18 @@ button.dl{font-size:15px;padding:10px 14px}
   </div>
 </div>
 
-<script src="store.js?v=2026.11.02-7"></script>
-<script src="calib.js?v=2026.11.02-7"></script>
-<script src="icc.js?v=2026.11.02-7"></script>
-<script src="install.js?v=2026.11.02-7"></script>
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-7"></script>
-<script src="lib/qrcode-1.0.0.min.js?v=2026.11.02-7"></script>
-<script src="link.js?v=2026.11.02-7"></script>
+<script src="store.js?v=2026.11.02-8"></script>
+<script src="calib.js?v=2026.11.02-8"></script>
+<script src="icc.js?v=2026.11.02-8"></script>
+<script src="install.js?v=2026.11.02-8"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-8"></script>
+<script src="lib/qrcode-1.0.0.min.js?v=2026.11.02-8"></script>
+<script src="link.js?v=2026.11.02-8"></script>
 <script>
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d', { alpha: false });
 const $ = id => document.getElementById(id);
-const S = { mode: 'delta', ch: 'grey', v: 128, d: 1, lo: 0, hi: 255, ped: 0, pat: 'c1', multi: { red: { v: 128, lo: 0, hi: 255 }, green: { v: 128, lo: 0, hi: 255 }, blue: { v: 128, lo: 0, hi: 255 } }, freq: 6, size: 'square', run: false };
+const S = { pos: null, mode: 'delta', ch: 'grey', v: 128, d: 1, lo: 0, hi: 255, ped: 0, pat: 'c1', multi: { red: { v: 128, lo: 0, hi: 255 }, green: { v: 128, lo: 0, hi: 255 }, blue: { v: 128, lo: 0, hi: 255 } }, freq: 6, size: 'square', run: false };
 
 let R = 60, half = 5, drops = 0, frames = 0, lastT = 0, phase = -1;
 let rect = null, A = null, B = null, chk = null, chkKey = '';
@@ -226,7 +226,12 @@ function resize() {
 }
 function layout() {
   const W = cv.width, H = cv.height;
-  if (S.size === 'full') rect = { x: 0, y: 0, w: W, h: H };
+  if (S.pos) { // uniformity check: a smaller patch at the centre or in a corner
+    const s = Math.round(Math.min(W, H) * 0.26), m = Math.round(Math.min(W, H) * 0.07);
+    const x = S.pos.endsWith('l') ? m : S.pos.endsWith('r') ? W - m - s : Math.round((W - s) / 2);
+    const y = S.pos.startsWith('t') ? m : S.pos.startsWith('b') ? H - m - s : Math.round((H - s) / 2);
+    rect = { x, y, w: s, h: s };
+  } else if (S.size === 'full') rect = { x: 0, y: 0, w: W, h: H };
   else { const s = Math.round(Math.min(W, H) * 0.6); rect = { x: Math.round((W - s) / 2), y: Math.round((H - s) / 2), w: s, h: s }; }
   chkKey = ''; build();
 }
@@ -310,7 +315,7 @@ const code = Array.from(crypto.getRandomValues(new Uint8Array(6)), b => ALPHA[b 
 $('code').textContent = code.toUpperCase();
 function pairStatus(text, on) { $('pairStatus').textContent = text; $('dot').className = 'dot' + (on ? ' on' : ''); }
 function stateMsg() {
-  return { type: 'state', state: { mode: S.mode, ch: S.ch, v: S.v, d: S.d, lo: S.lo, hi: S.hi, ped: S.ped, pat: S.pat, multi: S.multi, run: S.run },
+  return { type: 'state', state: { mode: S.mode, ch: S.ch, v: S.v, d: S.d, lo: S.lo, hi: S.hi, ped: S.ped, pat: S.pat, multi: S.multi, pos: S.pos, run: S.run },
            flicker: R / (2 * half), flickers: { red: R / (2 * mh.red), green: R / (2 * mh.green), blue: R / (2 * mh.blue) }, refresh: R, drops };
 }
 function send(m) { try { if (link) link.send(m); } catch (e) {} }
@@ -341,6 +346,12 @@ function onMsg(m) {
     send({ type: 'calibration-saved' });
     return;
   }
+  if (m && m.type === 'check-result' && m.kind) { // shadow detail, uniformity: kept for the report
+    let all = {}; try { all = JSON.parse(localStorage.getItem('calibrue.checks') || '{}') || {}; } catch (e) {}
+    if (!all[m.kind] || all[m.kind].when !== m.when) { all[m.kind] = { ...m, screen: thisScreen }; try { localStorage.setItem('calibrue.checks', JSON.stringify(all)); } catch (e) {} }
+    send({ type: 'check-saved' });
+    return;
+  }
   if (m && m.type === 'verify-result' && calibration) { // kept for the report
     if (!(calibration.verifications || []).some(v => v.when === m.when)) saveCal({ ...calibration, verifications: [...(calibration.verifications || []), { ...m, profile: profName() }] });
     send({ type: 'verify-saved' });
@@ -369,6 +380,7 @@ function onMsg(m) {
   if (Number.isFinite(s.hi)) S.hi = clamp(s.hi);
   if (Number.isFinite(s.ped)) S.ped = clamp(s.ped);
   if (['c1', 'c2', 'h', 'v'].includes(s.pat)) S.pat = s.pat; // c1 1×1 checker, c2 2×2 checker, h/v alternate lines
+  if ('pos' in s && [null, 'c', 'tl', 'tr', 'bl', 'br'].includes(s.pos) && s.pos !== S.pos) { S.pos = s.pos; layout(); }
   if (typeof s.run === 'boolean' && s.run !== S.run) { S.run = s.run; drops = 0; $('rD').textContent = 0; if (S.run) keepAwake(); }
   $('mode').value = S.mode; $('ch').value = S.ch; $('d').value = S.d; $('lo').value = S.lo; $('hi').value = S.hi;
   build(); syncUI(true);

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="calibrue-build" content="2026.11.02-7">
+<meta name="calibrue-build" content="2026.11.02-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Calibrue · iPhone</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -64,6 +64,10 @@ button.go{font-size:18px;padding:14px;border-radius:12px}
 .stages li[data-s="done"]{color:var(--fg)}.stages li[data-s="done"]::before{content:"✓";color:var(--good)}
 .stages li[data-s="fail"]{color:var(--r)}.stages li[data-s="fail"]::before{content:"✕"}
 .stages small{font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:400}
+.unigrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+.unigrid div{border:1px solid var(--line);border-radius:6px;padding:6px;min-height:52px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
+.unigrid .empty{border:0}
+.unigrid .warn{border-color:var(--mid);color:var(--fg)}
 details.adv{display:flex;flex-direction:column;gap:14px}
 details.adv>summary{cursor:pointer;font-size:13px;color:var(--muted);padding:6px 2px}
 details.adv[open]>summary{margin-bottom:14px}
@@ -113,6 +117,21 @@ details.adv>section+section{margin-top:14px}
       <button id="goStop" type="button" hidden>Stop</button>
       <button id="verify" type="button" disabled>Verify an installed profile</button>
     </div>
+  </section>
+
+
+  <section id="checks">
+    <h2>Screen checks</h2>
+    <p class="status">Extra measurements for the report. They work with or without a profile installed and measure the screen as you see it.</p>
+    <div class="actions">
+      <button id="chkShadow" type="button" disabled>Shadow &amp; highlight detail (1 min)</button>
+      <button id="chkUni" type="button" disabled>Uniformity, 5 spots (3 min)</button>
+    </div>
+    <button class="primary" id="chkNext" type="button" hidden>The phone is on the new square: continue</button>
+    <div class="actions"><button id="chkStop" type="button" hidden>Stop</button></div>
+    <div class="status" id="chkMsg"></div>
+    <div class="figure" id="chkBig" hidden></div>
+    <div id="chkGrid" hidden></div>
   </section>
 
   <details class="adv" id="adv">
@@ -221,10 +240,10 @@ details.adv>section+section{margin-top:14px}
   </section>
 </main>
 
-<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-7"></script>
-<script src="link.js?v=2026.11.02-7"></script>
-<script src="analysis.js?v=2026.11.02-7"></script>
-<script src="calib.js?v=2026.11.02-7"></script>
+<script src="lib/mqtt-5.10.1.min.js?v=2026.11.02-8"></script>
+<script src="link.js?v=2026.11.02-8"></script>
+<script src="analysis.js?v=2026.11.02-8"></script>
+<script src="calib.js?v=2026.11.02-8"></script>
 <script>
 const $ = id => document.getElementById(id);
 const video = $('vid');
@@ -445,7 +464,7 @@ function linkTick() {
 let tickN = 0; // hello every 1 s until the laptop answers, then a ping every 4 s
 setInterval(() => { if (!rl) return; tickN++; if (!paired || tickN % 4 === 0) rl.send({ type: paired ? 'ping' : 'hello' }); linkTick(); }, 1000);
 function onLapMsg(m) {
-  if (m && (m.type === 'calibration-saved' || m.type === 'refined' || m.type === 'verify-saved')) { calSaved = true; return; }
+  if (m && (m.type === 'calibration-saved' || m.type === 'refined' || m.type === 'verify-saved' || m.type === 'check-saved')) { calSaved = true; return; }
   if (!m || (m.type !== 'state' && m.type !== 'ack')) return;
   lap = m;
   const s = m.state, F = Number.isFinite(m.flicker) ? m.flicker.toFixed(2) + ' Hz' : '?';
@@ -471,7 +490,7 @@ function refreshAuto(msg = true) {
   const ready = !!link && !!stream && !auto;
   $('autoNull').disabled = !ready; $('autoStep').disabled = !ready; $('autoPat').disabled = !ready; $('autoStop').hidden = !auto || !!auto.kind;
   $('calRun').disabled = !ready; $('calStop').hidden = !auto || auto.kind !== 'cal';
-  $('go').disabled = !link || !!auto; $('verify').disabled = !link || !!auto; $('goStop').hidden = !auto || auto.kind !== 'full';
+  $('go').disabled = !link || !!auto; $('verify').disabled = !link || !!auto; $('chkShadow').disabled = !link || !!auto; $('chkUni').disabled = !link || !!auto; $('goStop').hidden = !auto || auto.kind !== 'full'; $('chkStop').hidden = !auto || auto.kind !== 'check';
   $('go').textContent = auto && auto.kind === 'full' ? 'Calibrating…' : 'Calibrate';
   if (!auto && msg && $('goMsg').textContent.startsWith('Pair')) $('goMsg').textContent = link ? 'Ready. Read the four points above, then tap Calibrate.' : 'Pair with the laptop above, then tap Calibrate.';
   if (!auto && msg) $('autoMsg').textContent = !link ? 'Pair with the laptop first.' : !stream ? 'Start the camera.' : 'Press the phone flat on the square, then pick a test.';
@@ -883,6 +902,111 @@ async function runVerify() {
   } catch (e) { say(e.message); }
   auto = null; refreshAuto(false);
 }
+
+
+// ---- Screen checks ----
+function chkSay(t) { $('chkMsg').textContent = t; try { rl && rl.send({ type: 'progress', text: t }); } catch (e) {} }
+async function sendCheck(result) {
+  calSaved = false;
+  for (let i = 0; i < 4 && !calSaved; i++) { rl && rl.send(result); await sleep(1200); }
+  return calSaved;
+}
+// Darkest step that stands out from black, and brightest that stands out from white.
+async function runShadow() {
+  auto = { stop: false, kind: 'check' }; refreshAuto();
+  $('chkBig').hidden = true; $('chkGrid').hidden = true;
+  const steps = [1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 32];
+  const find = async (label, state) => {
+    for (const [i, k] of steps.entries()) {
+      chkSay(`${label}: is level ${k} visible?`);
+      const r = await measureAt(state(k), i === 0 ? 2500 : 800, 4000);
+      if (r.snr >= 5) return k;
+    }
+    return null;
+  };
+  try {
+    await ensureCamera();
+    chkSay('Press the phone flat on the centre square.');
+    const shadow = await find('Shadows', k => ({ mode: 'delta', ch: 'grey', v: 0, d: k, ped: 0, pos: null, run: true }));
+    const light = await find('Highlights', k => ({ mode: 'delta', ch: 'grey', v: 255 - k, d: k, ped: 0, pos: null, run: true }));
+    try { await command({ run: false }); } catch (e) {}
+    const grade = k => k == null ? 'crushed' : k <= 3 ? 'excellent' : k <= 6 ? 'good' : k <= 12 ? 'fair' : 'crushed';
+    const result = { type: 'check-result', kind: 'shadow', when: new Date().toISOString(), shadow, highlight: light, shadowGrade: grade(shadow), highlightGrade: grade(light) };
+    lastAuto = { test: 'shadow', ...result };
+    $('chkBig').hidden = false;
+    $('chkBig').innerHTML = `${shadow ?? '>32'} · ${light ?? '>32'}<small> first visible step above black · below white</small>`;
+    const saved = await sendCheck(result);
+    chkSay(`Shadows ${grade(shadow)}, highlights ${grade(light)}. Lower is better: 1–3 means the screen shows the finest steps.${saved ? ' Saved in the laptop report.' : ''}`);
+  } catch (e) { chkSay(e.message); }
+  auto = null; refreshAuto(false);
+}
+// Tint (white with white balance locked) and tone (grey null) at the centre and 4 corners.
+let nextResolve = null;
+function waitForNext(text) {
+  chkSay(text); $('chkNext').hidden = false;
+  return new Promise((res, rej) => {
+    const chk = setInterval(() => { if (auto && auto.stop) { clearInterval(chk); nextResolve = null; rej(new Error('Stopped.')); } }, 300);
+    nextResolve = () => { clearInterval(chk); res(); };
+  });
+}
+$('chkNext').onclick = () => { $('chkNext').hidden = true; if (nextResolve) { const r = nextResolve; nextResolve = null; r(); } };
+async function runUniformity() {
+  auto = { stop: false, kind: 'check' }; refreshAuto();
+  $('chkBig').hidden = true; $('chkGrid').hidden = true;
+  const SPOTS = [['c', 'centre'], ['tl', 'top-left'], ['tr', 'top-right'], ['bl', 'bottom-left'], ['br', 'bottom-right']];
+  const pat = savedPattern(), rows = [];
+  let wbLocked = false;
+  const readWhite = async pos => {
+    await command({ mode: 'static', ch: 'grey', v: 255, ped: 0, pos, run: false });
+    await sleep(1500); const s0 = seq; await sleep(1500);
+    const s = buf.filter(p => p.seq > s0);
+    const m = k => s.reduce((a, p) => a + p[k], 0) / s.length;
+    return { r: m('r'), g: m('g'), b: m('b') };
+  };
+  try {
+    await ensureCamera();
+    for (const [i, [pos, name]] of SPOTS.entries()) {
+      await command({ mode: 'static', ch: 'grey', v: 255, ped: 0, pos, run: false });
+      await waitForNext(`${i + 1} of 5: move the phone onto the square at the ${name} of the laptop screen, then tap continue.`);
+      if (i === 0) { // lock white balance on the centre white, so tint differences show up as colour
+        try { await track.applyConstraints({ advanced: [{ whiteBalanceMode: 'manual' }] }); wbLocked = true; } catch (e) {}
+      }
+      chkSay(`${name}: measuring tint…`);
+      const w = await readWhite(pos);
+      chkSay(`${name}: measuring tone…`);
+      let first = true;
+      const r = await Calib.findNull(async v => { const m = await measureAt({ mode: 'checker', ch: 'grey', lo: 0, hi: 255, ped: 0, pat, pos, v, run: true }, first ? 2500 : 800, 2600, 'avg', { early: true, rel: true }); first = false; return m; }, 187, 2.2);
+      rows.push({ pos, name, rg: w.r / w.g, bg: w.b / w.g, v: r.v0, gamma: Math.log(0.5) / Math.log(r.v0 / 255) });
+    }
+    try { await command({ run: false, pos: null }); } catch (e) {}
+    const c = rows[0];
+    const spots = rows.map(r => ({ pos: r.pos, name: r.name,
+      // tint vs centre in % of light: camera values follow light^(1/2.2), so a camera ratio r means light r^2.2
+      red: +(((r.rg / c.rg) ** 2.2 - 1) * 100).toFixed(1), blue: +(((r.bg / c.bg) ** 2.2 - 1) * 100).toFixed(1),
+      gamma: +r.gamma.toFixed(3), dGamma: +(r.gamma - c.gamma).toFixed(3) }));
+    const worstTint = Math.max(...spots.map(p => Math.max(Math.abs(p.red), Math.abs(p.blue))));
+    const worstTone = Math.max(...spots.map(p => Math.abs(p.dGamma)));
+    const result = { type: 'check-result', kind: 'uniformity', when: new Date().toISOString(), wbLocked, spots, worstTint: +worstTint.toFixed(1), worstTone: +worstTone.toFixed(3) };
+    lastAuto = { test: 'uniformity', ...result };
+    const cell = p => { if (!p) return '<div class="empty"></div>';
+      const bad = Math.max(Math.abs(p.red), Math.abs(p.blue)) > 3 || Math.abs(p.dGamma) > 0.05;
+      const tint = p.pos === 'c' ? 'reference' : `${p.red >= 0 ? '+' : ''}${p.red}% R · ${p.blue >= 0 ? '+' : ''}${p.blue}% B`;
+      return `<div class="${bad ? 'warn' : ''}"><b>${p.name}</b>${tint}<br>γ ${p.gamma.toFixed(2)}</div>`; };
+    const at = k => spots.find(p => p.pos === k);
+    $('chkGrid').className = 'unigrid'; $('chkGrid').hidden = false;
+    $('chkGrid').innerHTML = [at('tl'), null, at('tr'), null, at('c'), null, at('bl'), null, at('br')].map(cell).join('');
+    $('chkBig').hidden = false;
+    $('chkBig').innerHTML = `${worstTint.toFixed(1)}% · ${worstTone.toFixed(2)}<small> largest tint and gamma difference from the centre</small>`;
+    const saved = await sendCheck(result);
+    chkSay(`${worstTint <= 3 && worstTone <= 0.05 ? 'Even screen.' : 'Some spots differ from the centre (marked).'} Tint differences above 3% and gamma differences above 0.05 are usually visible.${wbLocked ? '' : ' White balance could not be locked on this phone, so tint values are rough.'}${saved ? ' Saved in the laptop report.' : ''}`);
+  } catch (e) { chkSay(e.message); try { await command({ run: false, pos: null }); } catch (x) {} }
+  $('chkNext').hidden = true;
+  try { if (wbLocked) await track.applyConstraints({ advanced: [{ whiteBalanceMode: 'continuous' }] }); } catch (e) {}
+  auto = null; refreshAuto(false);
+}
+$('chkShadow').onclick = runShadow;
+$('chkStop').onclick = () => { if (auto) auto.stop = true; };
+$('chkUni').onclick = runUniformity;
 
 $('go').onclick = runFull;
 $('verify').onclick = runVerify;
