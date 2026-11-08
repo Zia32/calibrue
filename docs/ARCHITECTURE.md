@@ -60,9 +60,12 @@ Pages only orchestrate: UI, camera, timing, messages.
 `calibrue.calibration` (current), `calibrue.history`, `calibrue.white` (white gains/sliders), `calibrue.checks` (screen checks), `calibrue.edid`, `calibrue.pattern`, `calibrue.lang`.
 
 ## Testing
-- Today: no tests in the repo. Development used throwaway Node simulations and Playwright runs (fake camera, simulated panel, local MQTT broker) that were not committed.
-- The modules are already importable from Node (`module.exports`), so unit tests need no browser.
-- Proposed (awaiting approval): `node --test` with `node:assert`, no dependencies, in `tests/*.test.js`, covering colour maths against published reference values. Not added until Zia approves.
+- `node --test tests/*.test.js` (Node 22, built-in runner and `node:assert`, no dependencies); runs in CI (`unit-tests` job).
+  - `colour.test.js`: sRGB primaries and D65 (IEC 61966-2-1), Bradford colorants vs the sRGB IEC61966-2.1 ICC profile, D50 sum (ICC.1), L* (CIE 15), gamma 2.2 ramps.
+  - `icc.test.js`: header, required tags, alignment, `curv` 2.2, s15Fixed16 XYZ, `vcgt` layout, EDID /1024 (VESA E-EDID 1.4).
+  - `calib.test.js`: null fit, DFT amplitude and white gains on synthetic data with a known answer.
+- Expected values come from the cited reference, or from a synthetic case whose answer is chosen first; never from running our code.
+- Not covered by unit tests: camera, timing and pairing. These were checked with throwaway Playwright simulations (fake camera, simulated panel, local MQTT broker) and need the real iPhone + laptop.
 
 ## Cross-cutting decisions
 - Errors: user-facing messages say what to do next; measurement failures are non-fatal where a retry can recover.

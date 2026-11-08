@@ -1,7 +1,5 @@
 # Quality gates for Calibrue (static site, no package manager, no database).
 # Turn on branch protection for `main` on GitHub and mark these jobs as required.
-# Unit tests for the colour maths will be added here once a test setup is approved
-# (proposal: `node --test`, no dependencies).
 name: quality-gates
 
 on:
@@ -10,6 +8,16 @@ on:
     branches: [main]
 
 jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # Colour maths, ICC structure and measurement maths; Node's built-in runner, no dependencies
+      - run: node --test tests/*.test.js
+
   secrets:
     runs-on: ubuntu-latest
     steps:

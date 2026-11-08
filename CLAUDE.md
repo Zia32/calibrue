@@ -9,7 +9,7 @@
 - Users & roles: one person, two of their own devices: the laptop (shows test patches, keeps results, builds the profile) and the iPhone (camera, does the measuring). No accounts, no server of our own.
 - Expected scale: one session at a time per laptop; ~7 min per calibration; history keeps 30 calibrations in the laptop's localStorage.
 - Stack: static HTML + vanilla JS (no framework, no build step), GitHub Pages (HTTPS), public MQTT relays (EMQX, HiveMQ) via vendored MQTT.js 5.10.1, vendored qrcodejs 1.0.0. Target browsers: Safari on iPhone, Edge/Chrome on Windows.
-- Run: `python3 -m http.server 8000` in the repo root (camera and pairing need HTTPS or localhost) · Test: none in the repo yet (see `docs/ARCHITECTURE.md` → Testing) · Lint: none
+- Run: `python3 -m http.server 8000` in the repo root (camera and pairing need HTTPS or localhost) · Test: `node --test tests/*.test.js` (Node 22, no dependencies) · Lint: none
 
 ## Architecture (non-negotiable)
 - Maths lives in the plain JS modules (`analysis.js`, `calib.js`, `icc.js`), which run in the browser AND in Node (`module.exports`). Pages call them; pages do not reimplement maths.
@@ -42,6 +42,7 @@
 10. After finishing, run `docs/REVIEW_CHECKLIST.md` against your own diff and report pass/fail per item.
 
 ## Decisions log (newest first)
+- 2026-11-09 Tests: `node --test`, no dependencies; expected values only from published references or a known synthetic answer, never from our own code. A failing test is reported as a suspected bug, not edited.
 - 2026-11-08 Adopted the AI Dev Kit; rewrote these rules for a static, two-device web app.
 - 2026-11-02 Calibrate anchors colour curves to grey at 25/50/75% light (single-colour patches read ~0.08 gamma higher than grey).
 - 2026-11-01 Pairing over two public MQTT relays at once; direct WebRTC failed on routers that block local discovery.
