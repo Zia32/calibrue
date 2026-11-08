@@ -267,7 +267,8 @@
   const escapeRegExp = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const CAPTURE = '((?:(?![.?!…]\\s).)+?)'; // one value: anything up to the end of a sentence
   const TEMPL = Object.keys(DE).filter(k => k.includes('{}')).map(k => [
-    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- patterns come only from the fixed dictionary in this file, escaped; no user input.
+    // Patterns come only from the fixed dictionary in this file, fully escaped; no user input.
+    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     new RegExp('^' + k.split('{}').map(escapeRegExp).join(CAPTURE) + '$'), DE[k]]);
 
   function one(s) {
