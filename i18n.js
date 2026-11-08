@@ -262,9 +262,13 @@
     'Test image as the screen shows it now': 'Testbild, wie der Bildschirm es jetzt zeigt', 'Test image with the correction applied': 'Testbild mit angewendeter Korrektur',
   };
 
-  // Templates: "{}" → capture. Built once.
-  const esc = s => s.replace(/[.*+?^$()|[\]\\]/g, '\\$&');
-  const TEMPL = Object.keys(DE).filter(k => k.includes('{}')).map(k => [new RegExp('^' + esc(k).replace(/\\?\{\\?\}/g, '{}').split('{}').join('((?:(?![.?!…]\\s).)+?)') + '$'), DE[k]]);
+  // Templates: "{}" → capture. Built once. The text between placeholders is escaped
+  // completely (every regex metacharacter, braces included), so it only ever matches itself.
+  const escapeRegExp = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const CAPTURE = '((?:(?![.?!…]\\s).)+?)'; // one value: anything up to the end of a sentence
+  const TEMPL = Object.keys(DE).filter(k => k.includes('{}')).map(k => [
+    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- patterns come only from the fixed dictionary in this file, escaped; no user input.
+    new RegExp('^' + k.split('{}').map(escapeRegExp).join(CAPTURE) + '$'), DE[k]]);
 
   function one(s) {
     if (Object.prototype.hasOwnProperty.call(DE, s) && !s.includes('{}')) return DE[s];
